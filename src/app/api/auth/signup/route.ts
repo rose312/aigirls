@@ -27,6 +27,10 @@ function validateUsername(value: string) {
   return null;
 }
 
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
+
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as unknown;
@@ -65,53 +69,63 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "用户名已被占用。" }, { status: 409 });
     }
 
-    const supabase = getSupabaseAnonServerClient();
-    const { data: authData, error: authError } = await supabase.auth.signUp({
+    // Create auth user via service role to avoid FK races with `profiles.user_id`
+    // and to support "register => logged-in" without relying on email confirmation settings.
+    const { data: created, error: createError } = await admin.auth.admin.createUser({
       email,
       password,
-      options: {
-        data: {
-          username: username.trim(),
-        },
-      },
+      email_confirm: true,
+      user_metadata: { username: username.trim() },
     });
 
-    if (authError || !authData.user) {
+    if (createError || !created.user) {
       return NextResponse.json(
-        { error: authError?.message ?? "Signup failed." },
+        { error: createError?.message ?? "Signup failed." },
         { status: 400 },
       );
     }
 
-    // If the project requires email confirmation, Supabase may return a null session.
-    // Try signing in immediately so "register => logged-in" works when allowed by settings.
-    let session = authData.session ?? null;
-    if (!session) {
-      const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-      if (!loginError && loginData.session) session = loginData.session;
-    }
-
     // Create profile (service role so it works even if email confirmation is required).
-    const up = await admin.from("profiles").insert({
-      user_id: authData.user.id,
+    const profileRow = {
+      user_id: created.user.id,
       username: username.trim(),
       username_lower: usernameLower,
       email,
-    });
+    };
 
-    if (up.error) {
+    let lastError: string | null = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const up = await admin.from("profiles").insert(profileRow);
+      if (!up.error) {
+        lastError = null;
+        break;
+      }
+      lastError = up.error.message;
+      if (lastError.includes("foreign key constraint") && attempt < 2) {
+        await sleep(250 * (attempt + 1));
+        continue;
+      }
+      break;
+    }
+
+    if (lastError) {
+      try {
+        await admin.auth.admin.deleteUser(created.user.id);
+      } catch {
+        // ignore cleanup errors
+      }
       return NextResponse.json(
-        { error: `Profile creation failed: ${up.error.message}` },
+        { error: `Profile creation failed: ${lastError}` },
         { status: 500 },
       );
     }
 
+    const supabase = getSupabaseAnonServerClient();
+    const { data: loginData } = await supabase.auth.signInWithPassword({ email, password });
+
     return NextResponse.json({
-      session,
-      user: authData.user,
+      session: loginData.session ?? null,
+      user: created.user,
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unknown error";
