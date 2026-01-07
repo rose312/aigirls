@@ -78,20 +78,66 @@ export async function POST(req: Request) {
       user_metadata: { username: username.trim() },
     });
 
-    if (createError || !created.user) {
-      return NextResponse.json(
-        { error: createError?.message ?? "Signup failed." },
-        { status: 400 },
-      );
-    }
-
-    // Create profile (service role so it works even if email confirmation is required).
-    const profileRow = {
-      user_id: created.user.id,
+    const profileCommon = {
       username: username.trim(),
       username_lower: usernameLower,
       email,
     };
+
+    // If the email is already registered, attempt to log in with the provided password and "repair"
+    // a missing profile row (this can happen if a previous attempt failed after auth user creation).
+    if (createError || !created.user) {
+      const message = createError?.message ?? "Signup failed.";
+      if (/already registered/i.test(message) || /already exists/i.test(message)) {
+        const supabase = getSupabaseAnonServerClient();
+        const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+
+        if (loginError || !loginData.user || !loginData.session) {
+          return NextResponse.json({ error: message }, { status: 409 });
+        }
+
+        const userId = loginData.user.id;
+        const prof = await admin
+          .from("profiles")
+          .select("user_id")
+          .eq("user_id", userId)
+          .maybeSingle();
+
+        if (!prof.data?.user_id) {
+          let lastError: string | null = null;
+          for (let attempt = 0; attempt < 3; attempt++) {
+            const up = await admin.from("profiles").insert({ user_id: userId, ...profileCommon });
+            if (!up.error) {
+              lastError = null;
+              break;
+            }
+            lastError = up.error.message;
+            if (lastError.includes("foreign key constraint") && attempt < 2) {
+              await sleep(250 * (attempt + 1));
+              continue;
+            }
+            break;
+          }
+
+          if (lastError) {
+            return NextResponse.json(
+              { error: `Profile creation failed: ${lastError}` },
+              { status: 500 },
+            );
+          }
+        }
+
+        return NextResponse.json({ session: loginData.session, user: loginData.user });
+      }
+
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+
+    // Create profile (service role so it works even if email confirmation is required).
+    const profileRow = { user_id: created.user.id, ...profileCommon };
 
     let lastError: string | null = null;
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -121,10 +167,20 @@ export async function POST(req: Request) {
     }
 
     const supabase = getSupabaseAnonServerClient();
-    const { data: loginData } = await supabase.auth.signInWithPassword({ email, password });
+    const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (loginError || !loginData.session) {
+      return NextResponse.json(
+        { error: `Signup ok, but auto-login failed: ${loginError?.message ?? "no session"}` },
+        { status: 500 },
+      );
+    }
 
     return NextResponse.json({
-      session: loginData.session ?? null,
+      session: loginData.session,
       user: created.user,
     });
   } catch (e) {
