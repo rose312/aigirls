@@ -67,6 +67,11 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 - `QINIU_BUCKET_PRIVATE=true`
 - `QINIU_SIGNED_URL_TTL_SECONDS=3600`
+- `QINIU_SIGNING_MODE`：
+  - 留空：自动选择（推荐）
+  - `s3`：返回 SigV4 临时链接（适合 `*.qiniucs.com` 的 S3 兼容域名）
+  - `qiniu`：返回 `?e=...&token=...`（适合七牛提供的“私有下载域名”，例如 `*.gdipper.com`）
+- （推荐）`QINIU_DOWNLOAD_BASE_URL`：填写七牛提供的私有下载域名（你给的那种能直接访问的地址）
 
 应用会：
 - 生成后返回临时签名 URL（可直接展示）

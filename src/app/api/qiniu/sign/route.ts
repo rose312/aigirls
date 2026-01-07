@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { isQiniuConfigured, isQiniuPrivateBucket, presignQiniuGetUrl } from "@/lib/qiniu-s3";
+import {
+  isQiniuConfigured,
+  isQiniuPrivateBucket,
+  signQiniuGetUrlForKey,
+} from "@/lib/qiniu-s3";
 
 export const runtime = "nodejs";
 
@@ -30,7 +34,7 @@ export async function POST(req: Request) {
 
     const signed = await Promise.all(
       keys.map(async (key) => {
-        const { url, expiresAt } = await presignQiniuGetUrl(key);
+        const { url, expiresAt } = await signQiniuGetUrlForKey(key);
         return { key, url, expiresAt };
       }),
     );
@@ -41,4 +45,3 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
-

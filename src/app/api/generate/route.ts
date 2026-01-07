@@ -22,7 +22,7 @@ import { sanitizeTagKey } from "@/lib/tags";
 import {
   isQiniuConfigured,
   isQiniuPrivateBucket,
-  presignQiniuGetUrl,
+  signQiniuGetUrlForKey,
   uploadToQiniuS3,
 } from "@/lib/qiniu-s3";
 
@@ -143,7 +143,7 @@ export async function POST(req: Request) {
         if (isQiniuPrivateBucket()) {
           const signed = await Promise.all(
             uploaded.map(async (u) => {
-              const s = await presignQiniuGetUrl(u.key);
+              const s = await signQiniuGetUrlForKey(u.key);
               return { key: u.key, url: s.url, expiresAt: s.expiresAt };
             }),
           );
