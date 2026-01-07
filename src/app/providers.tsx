@@ -1,7 +1,9 @@
 "use client";
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import type { Session, SupabaseClient, User } from "@supabase/supabase-js";
 import type { ImageQuality, ImageSize, StyleId } from "@/lib/presets";
+import { getSupabaseBrowserClient } from "@/lib/supabase";
 
 export type GalleryItem = {
   id: string;
@@ -27,7 +29,17 @@ type GalleryContextValue = {
   remove: (id: string) => void;
 };
 
+type AuthContextValue = {
+  session: Session | null;
+  user: User | null;
+  signInWithPassword: (identifier: string, password: string) => Promise<string | null>;
+  signUpWithPassword: (username: string, email: string, password: string) => Promise<string | null>;
+  signOut: () => Promise<void>;
+  syncMyImages: () => Promise<void>;
+};
+
 const GalleryContext = createContext<GalleryContextValue | null>(null);
+const AuthContext = createContext<AuthContextValue | null>(null);
 
 const STORAGE_KEY = "aigirls.gallery.v1";
 const MAX_ITEMS = 60;
@@ -46,7 +58,7 @@ function safeParseGallery(value: string | null): GalleryItem[] {
         createdAt: typeof x.createdAt === "number" ? x.createdAt : Date.now(),
         prompt: typeof x.prompt === "string" ? x.prompt : "",
         styleId: (typeof x.styleId === "string" ? x.styleId : "photo") as StyleId,
-        styleLabel: typeof x.styleLabel === "string" ? x.styleLabel : "写真写实",
+        styleLabel: typeof x.styleLabel === "string" ? x.styleLabel : "",
         size: (typeof x.size === "string" ? x.size : "1024x1536") as ImageSize,
         quality: (typeof x.quality === "string" ? x.quality : "auto") as ImageQuality,
         model: typeof x.model === "string" || x.model === null ? x.model : null,
@@ -79,8 +91,18 @@ function tryPersistGallery(items: GalleryItem[]) {
   }
 }
 
+async function setSupabaseSession(
+  supabase: SupabaseClient,
+  session: { access_token: string; refresh_token: string },
+) {
+  const { error } = await supabase.auth.setSession(session);
+  return error ? error.message : null;
+}
+
 export function AppProviders({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<GalleryItem[]>([]);
+  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
     const loaded = safeParseGallery(localStorage.getItem(STORAGE_KEY));
@@ -88,6 +110,83 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (cancelled) return;
+        setSession(data.session);
+        setUser(data.session?.user ?? null);
+      } catch {
+        // ignore
+      }
+    })();
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession);
+      setUser(newSession?.user ?? null);
+    });
+
+    return () => {
+      cancelled = true;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
+
+  async function syncMyImages() {
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) return;
+
+    const { data } = await supabase.auth.getSession();
+    const s = data.session;
+    if (!s) return;
+
+    const res = await supabase
+      .from("images")
+      .select(
+        "id, created_at, prompt, style_id, style_label, size, quality, model, provider, tag_keys, image_key, favorite",
+      )
+      .order("created_at", { ascending: false })
+      .limit(60);
+
+    if (res.error) return;
+    const rows = res.data ?? [];
+
+    const mapped: GalleryItem[] = rows
+      .map((r: any) => ({
+        id: String(r.id),
+        createdAt: new Date(r.created_at).getTime(),
+        prompt: String(r.prompt ?? ""),
+        styleId: String(r.style_id ?? "photo") as StyleId,
+        styleLabel: String(r.style_label ?? ""),
+        size: String(r.size ?? "1024x1536") as ImageSize,
+        quality: String(r.quality ?? "auto") as ImageQuality,
+        model: typeof r.model === "string" ? r.model : null,
+        tagKeys: Array.isArray(r.tag_keys) ? r.tag_keys.map(String) : [],
+        imageUrl: "",
+        imageKey: typeof r.image_key === "string" ? r.image_key : undefined,
+        urlExpiresAt: 0,
+        favorite: Boolean(r.favorite),
+      }))
+      .filter((x) => x.id && x.prompt && x.imageKey);
+
+    if (mapped.length > 0) setItems(mapped);
+  }
+
+  useEffect(() => {
+    if (!user) return;
+    void syncMyImages();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+  useEffect(() => {
+    // Refresh signed URLs for private buckets.
+    const token = session?.access_token;
+    if (!token) return;
+
     const now = Date.now();
     const needs = items
       .filter((it) => typeof it.imageKey === "string" && it.imageKey.length > 0)
@@ -102,10 +201,14 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
       try {
         const res = await fetch("/api/qiniu/sign", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
           body: JSON.stringify({ keys: unique }),
         });
         if (!res.ok) return;
+
         const payload = (await res.json()) as {
           items?: Array<{ key: string; url: string; expiresAt: number }>;
         };
@@ -129,18 +232,16 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [items]);
+  }, [items, session?.access_token]);
 
   useEffect(() => {
     tryPersistGallery(items);
   }, [items]);
 
-  const value = useMemo<GalleryContextValue>(
+  const galleryValue = useMemo<GalleryContextValue>(
     () => ({
       items,
-      addItems: (next) => {
-        setItems((prev) => [...next, ...prev].slice(0, MAX_ITEMS));
-      },
+      addItems: (next) => setItems((prev) => [...next, ...prev].slice(0, MAX_ITEMS)),
       clear: () => setItems([]),
       toggleFavorite: (id) =>
         setItems((prev) =>
@@ -151,7 +252,64 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
     [items],
   );
 
-  return <GalleryContext.Provider value={value}>{children}</GalleryContext.Provider>;
+  const authValue = useMemo<AuthContextValue>(
+    () => ({
+      session,
+      user,
+      signInWithPassword: async (identifier, password) => {
+        try {
+          const supabase = getSupabaseBrowserClient();
+          if (!supabase) {
+            return "Supabase 未配置。请设置 NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY。";
+          }
+          const res = await fetch("/api/auth/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ identifier, password }),
+          });
+          const payload = (await res.json()) as { session?: any; error?: string };
+          if (!res.ok || !payload.session) return payload.error ?? "登录失败。";
+          return await setSupabaseSession(supabase, payload.session);
+        } catch (e) {
+          return e instanceof Error ? e.message : "Unknown error";
+        }
+      },
+      signUpWithPassword: async (username, email, password) => {
+        try {
+          const supabase = getSupabaseBrowserClient();
+          if (!supabase) {
+            return "Supabase 未配置。请设置 NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY。";
+          }
+          const res = await fetch("/api/auth/signup", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username, email, password }),
+          });
+          const payload = (await res.json()) as { session?: any; error?: string };
+          if (!res.ok) return payload.error ?? "注册失败。";
+          if (payload.session?.access_token && payload.session?.refresh_token) {
+            return await setSupabaseSession(supabase, payload.session);
+          }
+          return null;
+        } catch (e) {
+          return e instanceof Error ? e.message : "Unknown error";
+        }
+      },
+      signOut: async () => {
+        const supabase = getSupabaseBrowserClient();
+        if (!supabase) return;
+        await supabase.auth.signOut();
+      },
+      syncMyImages,
+    }),
+    [session, user],
+  );
+
+  return (
+    <AuthContext.Provider value={authValue}>
+      <GalleryContext.Provider value={galleryValue}>{children}</GalleryContext.Provider>
+    </AuthContext.Provider>
+  );
 }
 
 export function useGallery() {
@@ -159,3 +317,10 @@ export function useGallery() {
   if (!ctx) throw new Error("useGallery must be used within AppProviders");
   return ctx;
 }
+
+export function useAuth() {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth must be used within AppProviders");
+  return ctx;
+}
+

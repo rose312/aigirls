@@ -4,6 +4,7 @@ import {
   isQiniuPrivateBucket,
   signQiniuGetUrlForKey,
 } from "@/lib/qiniu-s3";
+import { getSupabaseServerClient } from "@/lib/supabase-server";
 
 export const runtime = "nodejs";
 
@@ -22,6 +23,21 @@ export async function POST(req: Request) {
       );
     }
 
+    const authHeader =
+      req.headers.get("authorization") ?? req.headers.get("Authorization");
+    const match = authHeader?.match(/^Bearer\s+(.+)$/i);
+    const accessToken = match?.[1];
+    if (!accessToken) {
+      return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+    }
+
+    const supabase = getSupabaseServerClient(accessToken);
+    const { data: userData, error: userErr } = await supabase.auth.getUser();
+    const user = userData?.user ?? null;
+    if (userErr || !user) {
+      return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+    }
+
     const body = (await req.json()) as unknown;
     if (!isRecord(body) || !Array.isArray((body as any).keys)) {
       return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
@@ -32,8 +48,22 @@ export async function POST(req: Request) {
       .map((k) => k.trim())
       .slice(0, 50);
 
+    // Only sign keys that belong to the current user.
+    const { data: owned, error: ownedErr } = await supabase
+      .from("images")
+      .select("image_key")
+      .in("image_key", keys)
+      .limit(50);
+    if (ownedErr) {
+      return NextResponse.json({ error: ownedErr.message }, { status: 500 });
+    }
+
+    const ownedKeys = (owned ?? [])
+      .map((r: any) => r.image_key)
+      .filter((k: any): k is string => typeof k === "string" && k.length > 0);
+
     const signed = await Promise.all(
-      keys.map(async (key) => {
+      ownedKeys.map(async (key) => {
         const { url, expiresAt } = await signQiniuGetUrlForKey(key);
         return { key, url, expiresAt };
       }),

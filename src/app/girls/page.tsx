@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { SIZE_OPTIONS, STYLE_PRESETS, type StyleId } from "@/lib/presets";
 import { useGallery, type GalleryItem } from "@/app/providers";
+import { useAuth } from "@/app/providers";
 import { aspectClassForSize } from "@/lib/aspect";
 import { TAG_GROUPS, labelForTagKey, parseTagKey, tagKey, type TagCategory } from "@/lib/tags";
 import ZoomableImage from "@/components/ZoomableImage";
@@ -22,6 +23,7 @@ function formatTime(ts: number) {
 export default function GirlsPage() {
   const router = useRouter();
   const { items, clear, remove, toggleFavorite } = useGallery();
+  const { user, syncMyImages } = useAuth();
 
   const [q, setQ] = useState("");
   const [styleFilter, setStyleFilter] = useState<StyleId | "all">("all");
@@ -132,6 +134,15 @@ export default function GirlsPage() {
               >
                 去生成
               </Link>
+              <button
+                type="button"
+                onClick={() => syncMyImages()}
+                disabled={!user}
+                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10 disabled:opacity-50"
+                title={user ? "从 Supabase 同步我的图片" : "请先登录（首页右上角）"}
+              >
+                云端同步
+              </button>
               <button
                 type="button"
                 onClick={clear}
@@ -400,12 +411,16 @@ export default function GirlsPage() {
                         className="group relative w-full overflow-hidden rounded-2xl border border-white/10 bg-black/30 text-left"
                       >
                         <div className={aspectClassForSize(it.size)}>
-                          <img
-                            src={it.imageUrl}
-                            alt="generated"
-                            loading="lazy"
-                            className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
-                          />
+                          {it.imageUrl ? (
+                            <img
+                              src={it.imageUrl}
+                              alt="generated"
+                              loading="lazy"
+                              className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
+                            />
+                          ) : (
+                            <div className="h-full w-full animate-pulse bg-white/5" />
+                          )}
                         </div>
 
                         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-black/0 to-black/0 opacity-90" />

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { buildFinalPromptWithTags } from "@/lib/build-image-prompt";
+import { STYLE_PRESETS } from "@/lib/presets";
 import {
   isImageQuality,
   isImageSize,
@@ -25,6 +26,7 @@ import {
   signQiniuGetUrlForKey,
   uploadToQiniuS3,
 } from "@/lib/qiniu-s3";
+import { getSupabaseServerClient } from "@/lib/supabase-server";
 
 export const runtime = "nodejs";
 
@@ -79,6 +81,11 @@ function parseGenerateRequest(body: unknown): GenerateRequest {
   return { prompt, styleId, size, quality, n, tagKeys, safetyLevel };
 }
 
+function bearerTokenFromHeader(value: string | null) {
+  const match = value?.match(/^Bearer\s+(.+)$/i);
+  return match?.[1] ?? null;
+}
+
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as unknown;
@@ -93,9 +100,7 @@ export async function POST(req: Request) {
     const missing = getMissingImageProviderEnv(provider);
     if (missing.length > 0) {
       return NextResponse.json(
-        {
-          error: `服务器未配置：${missing.join(", ")}。请在 .env.local 里设置后重试。`,
-        },
+        { error: `服务器未配置：${missing.join(", ")}。请在 .env.local 里设置后重试。` },
         { status: 501 },
       );
     }
@@ -117,8 +122,7 @@ export async function POST(req: Request) {
     let warning: string | undefined;
     let images: Array<{ url: string; key?: string; expiresAt?: number }> = [];
 
-    const shouldUpload = isQiniuConfigured();
-    if (shouldUpload) {
+    if (isQiniuConfigured()) {
       try {
         const ext =
           result.mime === "image/jpeg" || result.mime === "image/jpg"
@@ -138,16 +142,15 @@ export async function POST(req: Request) {
           });
           uploaded.push({ key: up.key, url: up.url });
         }
-        storage = "qiniu";
 
+        storage = "qiniu";
         if (isQiniuPrivateBucket()) {
-          const signed = await Promise.all(
+          images = await Promise.all(
             uploaded.map(async (u) => {
               const s = await signQiniuGetUrlForKey(u.key);
               return { key: u.key, url: s.url, expiresAt: s.expiresAt };
             }),
           );
-          images = signed;
         } else {
           images = uploaded.map((u) => ({ key: u.key, url: u.url }));
         }
@@ -163,11 +166,55 @@ export async function POST(req: Request) {
       }));
     }
 
+    // Optional: persist metadata to Supabase for the current user.
+    // Requires Authorization: Bearer <supabase_access_token>.
+    let saved = 0;
+    let dbWarning: string | undefined;
+    try {
+      const accessToken = bearerTokenFromHeader(req.headers.get("authorization"));
+      const keys = images
+        .map((img) => img.key)
+        .filter((k): k is string => typeof k === "string" && k.length > 0);
+
+      if (accessToken && keys.length > 0) {
+        const supabase = getSupabaseServerClient(accessToken);
+        const { data, error } = await supabase.auth.getUser();
+        if (error || !data.user) {
+          dbWarning = error?.message ?? "Supabase auth failed";
+        } else {
+          const styleLabel =
+            STYLE_PRESETS.find((s) => s.id === input.styleId)?.label ?? "";
+
+          const rows = keys.map((key) => ({
+            user_id: data.user.id,
+            image_key: key,
+            prompt: input.prompt,
+            style_id: input.styleId,
+            style_label: styleLabel,
+            size: input.size,
+            quality: input.quality,
+            provider: result.provider,
+            model: result.model,
+            tag_keys: input.tagKeys,
+            favorite: false,
+          }));
+
+          const ins = await supabase.from("images").insert(rows);
+          if (ins.error) dbWarning = ins.error.message;
+          else saved = rows.length;
+        }
+      }
+    } catch (e) {
+      dbWarning = e instanceof Error ? e.message : "DB save failed";
+    }
+
     return NextResponse.json({
       provider: result.provider,
       model: result.model,
       storage,
       warning,
+      saved,
+      dbWarning,
       images: images.map((img) => ({ mime: result.mime, ...img })),
     });
   } catch (err) {
@@ -176,3 +223,4 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: message }, { status });
   }
 }
+

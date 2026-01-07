@@ -10,6 +10,7 @@ import {
   type StyleId,
 } from "@/lib/presets";
 import { useGallery } from "@/app/providers";
+import { useAuth } from "@/app/providers";
 import { aspectClassForSize } from "@/lib/aspect";
 import {
   TAG_GROUPS,
@@ -105,6 +106,8 @@ const MEIZI_TEMPLATES: ReadonlyArray<{
 
 export default function Home() {
   const { items: images, addItems, clear } = useGallery();
+  const { session, user, signInWithPassword, signOut, signUpWithPassword, syncMyImages } =
+    useAuth();
 
   const [prompt, setPrompt] = useState("");
   const [styleId, setStyleId] = useState<StyleId>("photo");
@@ -118,6 +121,13 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [lastModel, setLastModel] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  const [authIdentifier, setAuthIdentifier] = useState("");
+  const [authUsername, setAuthUsername] = useState("");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authError, setAuthError] = useState<string | null>(null);
 
   const selectedStyle = useMemo(
     () => STYLE_PRESETS.find((s) => s.id === styleId) ?? STYLE_PRESETS[0]!,
@@ -181,7 +191,10 @@ export default function Home() {
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+        },
         body: JSON.stringify({
           prompt,
           styleId,
@@ -195,7 +208,7 @@ export default function Home() {
 
       const payload = (await res.json()) as
         | {
-            images: Array<{ url: string; mime: string; key?: string; expiresAt?: number }>;
+          images: Array<{ url: string; mime: string; key?: string; expiresAt?: number }>;
             model?: string;
             provider?: string;
             storage?: string;
@@ -231,6 +244,10 @@ export default function Home() {
         favorite: false,
       }));
       addItems(next);
+      if (user) {
+        // refresh from DB so we keep keys for private buckets
+        await syncMyImages();
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "未知错误");
     } finally {
@@ -243,7 +260,7 @@ export default function Home() {
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_50%_at_20%_10%,rgba(236,72,153,0.18),transparent_60%),radial-gradient(55%_45%_at_80%_20%,rgba(59,130,246,0.18),transparent_55%),radial-gradient(60%_50%_at_50%_100%,rgba(168,85,247,0.14),transparent_60%)]" />
       <div className="relative mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-10 sm:px-6 lg:px-8">
         <header className="flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-pink-500 via-violet-500 to-sky-500 shadow-[0_0_0_1px_rgba(255,255,255,0.12)]" />
               <div>
@@ -271,6 +288,32 @@ export default function Home() {
               >
                 API 文档
               </a>
+              {user ? (
+                <button
+                  type="button"
+                  onClick={() => signOut()}
+                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10"
+                  title={user.email ?? "已登录"}
+                >
+                  退出
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthOpen(true);
+                    setAuthMode("signin");
+                    setAuthError(null);
+                    setAuthIdentifier("");
+                    setAuthUsername("");
+                    setAuthEmail("");
+                    setAuthPassword("");
+                  }}
+                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10"
+                >
+                  登录
+                </button>
+              )}
             </div>
           </div>
         </header>
@@ -740,6 +783,116 @@ export default function Home() {
                       </button>
                     </div>
                   </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {authOpen ? (
+          <div
+            className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4"
+            role="dialog"
+            aria-modal="true"
+            onClick={() => setAuthOpen(false)}
+          >
+            <div
+              className="w-full max-w-md overflow-hidden rounded-2xl border border-white/10 bg-zinc-950"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+                <div className="text-sm font-semibold">
+                  {authMode === "signin" ? "登录" : "注册"}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAuthOpen(false)}
+                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-zinc-200 hover:bg-white/10"
+                >
+                  关闭
+                </button>
+              </div>
+              <div className="p-4">
+                <div className="grid gap-3">
+                  {authMode === "signup" ? (
+                    <input
+                      value={authUsername}
+                      onChange={(e) => setAuthUsername(e.target.value)}
+                      placeholder="用户名（3-20，字母/数字/下划线）"
+                      className="w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-pink-500/50"
+                    />
+                  ) : null}
+
+                  {authMode === "signin" ? (
+                    <input
+                      value={authIdentifier}
+                      onChange={(e) => setAuthIdentifier(e.target.value)}
+                      placeholder="用户名或邮箱"
+                      className="w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-pink-500/50"
+                    />
+                  ) : (
+                    <input
+                      value={authEmail}
+                      onChange={(e) => setAuthEmail(e.target.value)}
+                      placeholder="邮箱"
+                      className="w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-pink-500/50"
+                    />
+                  )}
+                  <input
+                    value={authPassword}
+                    onChange={(e) => setAuthPassword(e.target.value)}
+                    placeholder="密码（>= 6）"
+                    type="password"
+                    className="w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-pink-500/50"
+                  />
+                  {authError ? (
+                    <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-100">
+                      {authError}
+                    </div>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setAuthError(null);
+                      const identifier = authIdentifier.trim();
+                      const email = authEmail.trim();
+                      const username = authUsername.trim();
+                      const password = authPassword;
+                      if (authMode === "signin") {
+                        if (!identifier || !password) {
+                          setAuthError("请输入用户名/邮箱和密码。");
+                          return;
+                        }
+                        const err = await signInWithPassword(identifier, password);
+                        if (err) {
+                          setAuthError(err);
+                          return;
+                        }
+                      } else {
+                        if (!username || !email || !password) {
+                          setAuthError("请输入用户名、邮箱和密码。");
+                          return;
+                        }
+                        const err = await signUpWithPassword(username, email, password);
+                        if (err) {
+                          setAuthError(err);
+                          return;
+                        }
+                      }
+                      setAuthOpen(false);
+                      await syncMyImages();
+                    }}
+                    className="rounded-2xl bg-gradient-to-r from-pink-500 via-violet-500 to-sky-500 px-4 py-3 text-sm font-semibold text-white hover:brightness-110"
+                  >
+                    {authMode === "signin" ? "登录" : "注册"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAuthMode((m) => (m === "signin" ? "signup" : "signin"))}
+                    className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-zinc-200 hover:bg-white/10"
+                  >
+                    {authMode === "signin" ? "没有账号？去注册" : "已有账号？去登录"}
+                  </button>
                 </div>
               </div>
             </div>

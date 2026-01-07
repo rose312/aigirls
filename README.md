@@ -77,6 +77,26 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 - 生成后返回临时签名 URL（可直接展示）
 - 本地画廊保存 `key`，当签名 URL 过期会自动调用 `POST /api/qiniu/sign` 刷新
 
+## 数据库（Supabase）
+
+用于保存图片列表信息（图片路径/Key + 归属用户）。
+
+1) 在 Supabase 项目里执行 `src/lib/supabase-schema.sql`
+2) 在 `.env.local` 配置：
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `SUPABASE_SERVICE_ROLE_KEY`（服务端用：创建 profile / 用户名登录映射）
+
+登录后生成的图片会自动写入 `public.images`（需要启用七牛存储以获得 `image_key`），并可跨设备同步到画廊。
+
+### 注册后立刻登录
+
+要实现“注册即登录”，请在 Supabase 控制台关闭邮箱确认：
+
+- `Authentication` → `Providers` → `Email` → 关闭 `Confirm email`
+
+否则 Supabase 会返回空 session，需要用户先去邮箱点确认链接后才能登录。
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:
