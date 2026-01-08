@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { checkPromptSafety } from "@/lib/prompt-safety";
 import { optimizeImagePrompt } from "@/lib/openrouter-text";
+import { optimizeImagePromptDeepSeek } from "@/lib/deepseek-text";
 import { isPromptPresetId } from "@/lib/prompt-presets";
 
 export const runtime = "nodejs";
@@ -32,7 +33,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: safety.message }, { status: 400 });
     }
 
-    const prompt = await optimizeImagePrompt({ keywords, presetId });
+    const provider = (process.env.PROMPT_OPTIMIZER_PROVIDER ?? "openrouter").toLowerCase();
+    const prompt =
+      provider === "deepseek"
+        ? await optimizeImagePromptDeepSeek({ keywords, presetId })
+        : await optimizeImagePrompt({ keywords, presetId });
     return NextResponse.json({ prompt });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unknown error";
