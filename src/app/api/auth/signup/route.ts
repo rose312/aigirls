@@ -30,7 +30,7 @@ function validateUsername(value: string) {
 function validateUsernameV2(value: string) {
   const u = value.trim();
   if (u.length < 1 || u.length > 20) return "用户名长度需要 1-20。";
-  if (!/^[\\p{L}\\p{N}_-]+$/u.test(u)) return "用户名只能包含文字/数字/下划线/短横线。";
+  if (!/^[\p{L}\p{N}_-]+$/u.test(u)) return "用户名只能包含文字/数字/下划线/短横线。";
   return null;
 }
 
