@@ -66,7 +66,25 @@ export async function POST(req: Request) {
     });
 
     if (authError || !authData?.session) {
-      return NextResponse.json({ error: "Invalid credentials." }, { status: 401 });
+      const msg = authError?.message ?? "Invalid credentials.";
+      if (/email not confirmed/i.test(msg)) {
+        return NextResponse.json(
+          {
+            error:
+              "邮箱未验证（Email not confirmed）。请去 Supabase 控制台确认邮箱，或在 Auth 设置里关闭邮箱确认后再登录。",
+            debug: process.env.NODE_ENV !== "production" ? msg : undefined,
+          },
+          { status: 403 },
+        );
+      }
+
+      return NextResponse.json(
+        {
+          error: "Invalid credentials.",
+          debug: process.env.NODE_ENV !== "production" ? msg : undefined,
+        },
+        { status: 401 },
+      );
     }
 
     return NextResponse.json({
