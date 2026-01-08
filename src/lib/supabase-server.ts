@@ -6,6 +6,18 @@ function requireEnv(name: string) {
   return value;
 }
 
+function requireSupabaseAnonKey() {
+  const value =
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  if (!value) {
+    throw new Error(
+      "Missing environment variable: NEXT_PUBLIC_SUPABASE_ANON_KEY (or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY).",
+    );
+  }
+  return value;
+}
+
 function decodeJwtPayload(token: string): Record<string, unknown> | null {
   try {
     const parts = token.split(".");
@@ -63,7 +75,7 @@ function validateSupabaseKey({
 
 export function getSupabaseServerClient(accessToken: string) {
   const url = requireEnv("NEXT_PUBLIC_SUPABASE_URL");
-  const anonKey = requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY");
+  const anonKey = requireSupabaseAnonKey();
   validateSupabaseKey({ url, key: anonKey, name: "NEXT_PUBLIC_SUPABASE_ANON_KEY", expectedRole: "anon" });
   return createClient(url, anonKey, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -77,7 +89,7 @@ export function getSupabaseServerClient(accessToken: string) {
 
 export function getSupabaseAnonServerClient() {
   const url = requireEnv("NEXT_PUBLIC_SUPABASE_URL");
-  const anonKey = requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY");
+  const anonKey = requireSupabaseAnonKey();
   validateSupabaseKey({ url, key: anonKey, name: "NEXT_PUBLIC_SUPABASE_ANON_KEY", expectedRole: "anon" });
   return createClient(url, anonKey, {
     auth: { persistSession: false, autoRefreshToken: false },
