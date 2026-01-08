@@ -27,6 +27,13 @@ function validateUsername(value: string) {
   return null;
 }
 
+function validateUsernameV2(value: string) {
+  const u = value.trim();
+  if (u.length < 1 || u.length > 20) return "用户名长度需要 1-20。";
+  if (!/^[\\p{L}\\p{N}_-]+$/u.test(u)) return "用户名只能包含文字/数字/下划线/短横线。";
+  return null;
+}
+
 function sleep(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
@@ -42,7 +49,7 @@ export async function POST(req: Request) {
     const email = typeof body.email === "string" ? body.email.trim() : "";
     const password = typeof body.password === "string" ? body.password : "";
 
-    const uErr = validateUsername(username);
+    const uErr = validateUsernameV2(username);
     if (uErr) return NextResponse.json({ error: uErr }, { status: 400 });
     if (!email || !email.includes("@")) {
       return NextResponse.json({ error: "请输入有效邮箱。" }, { status: 400 });
