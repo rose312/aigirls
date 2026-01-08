@@ -96,7 +96,14 @@ export async function POST(req: Request) {
         });
 
         if (loginError || !loginData.user || !loginData.session) {
-          return NextResponse.json({ error: message }, { status: 409 });
+          return NextResponse.json(
+            {
+              error:
+                "该邮箱已在 Supabase Auth 中注册（即使 public 表为空也会这样）。请到 Supabase 控制台 Authentication -> Users 搜索该邮箱并删除/重置密码；如果控制台也看不到，请确认你查看的是与 NEXT_PUBLIC_SUPABASE_URL 对应的同一个项目。",
+              debug: process.env.NODE_ENV !== "production" ? message : undefined,
+            },
+            { status: 409 },
+          );
         }
 
         const userId = loginData.user.id;
