@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { SIZE_OPTIONS, STYLE_PRESETS, type StyleId } from "@/lib/presets";
 import { useGallery, type GalleryItem } from "@/app/providers";
@@ -45,6 +45,13 @@ export default function GirlsPage() {
     extra: [],
   });
   const [active, setActive] = useState<GalleryItem | null>(null);
+
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  const [draftPrompt, setDraftPrompt] = useState("");
+  const [draftStyleId, setDraftStyleId] = useState<StyleId>("photo");
+  const [draftSize, setDraftSize] = useState<(typeof SIZE_OPTIONS)[number]["id"]>("1024x1536");
+  const [draftQuality, setDraftQuality] = useState<GalleryItem["quality"]>("auto");
+  const [draftTags, setDraftTags] = useState<string[]>([]);
 
   const tagCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -123,12 +130,42 @@ export default function GirlsPage() {
     else toast.error("复制失败，请检查浏览器权限。");
   }
 
+  useEffect(() => {
+    if (draftPrompt.trim().length === 0) return;
+    // Keep composer in view if user just selected an item.
+    // (No-op if already visible.)
+  }, [draftPrompt]);
+
+  function fillComposerFromItem(it: GalleryItem) {
+    setDraftPrompt(it.prompt);
+    setDraftStyleId(it.styleId);
+    setDraftSize(it.size);
+    setDraftQuality(it.quality);
+    setDraftTags(it.tagKeys ?? []);
+    toast.success("已填入该图提示词");
+    window.setTimeout(() => composerRef.current?.focus(), 50);
+  }
+
+  function goGenerateWithDraft() {
+    const p = draftPrompt.trim();
+    if (!p) {
+      toast.error("请先选择一张图或输入提示词。");
+      return;
+    }
+    const url = `/?prompt=${encodeURIComponent(p)}&style=${encodeURIComponent(
+      draftStyleId,
+    )}&size=${encodeURIComponent(draftSize)}&quality=${encodeURIComponent(
+      draftQuality,
+    )}&tags=${encodeURIComponent(draftTags.join(","))}`;
+    router.push(url);
+  }
+
   return (
     <div className="relative min-h-screen bg-[#05060a] text-zinc-50">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(800px_520px_at_15%_12%,rgba(236,72,153,0.14),transparent_60%),radial-gradient(800px_520px_at_85%_18%,rgba(59,130,246,0.14),transparent_60%),radial-gradient(900px_650px_at_50%_110%,rgba(168,85,247,0.12),transparent_60%)]" />
       <div className="pointer-events-none absolute inset-0 opacity-[0.08] mix-blend-overlay [background-image:radial-gradient(circle_at_1px_1px,rgba(255,255,255,0.35)_1px,transparent_0)] [background-size:18px_18px]" />
 
-      <div className="relative mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-10 sm:px-6 lg:px-8">
+      <div className="relative mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 pb-56 pt-10 sm:px-6 lg:px-8">
         <header className="flex flex-col gap-4">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
@@ -423,7 +460,10 @@ export default function GirlsPage() {
                       subtitle={it.size}
                       prompt={it.prompt}
                       favorite={it.favorite}
-                      onOpen={() => setActive(it)}
+                      onOpen={() => {
+                        setActive(it);
+                        fillComposerFromItem(it);
+                      }}
                       onToggleFavorite={() => {
                         toggleFavorite(it.id);
                         toast.info(it.favorite ? "已取消收藏" : "已收藏");
@@ -577,6 +617,100 @@ export default function GirlsPage() {
             </div>
           </div>
         ) : null}
+      </div>
+
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-black/45 backdrop-blur">
+        <div className="mx-auto w-full max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-zinc-100">提示词输入</div>
+              <div className="text-xs text-zinc-400">
+                选中一张图会自动填入提示词；你也可以直接编辑，然后去生成。
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void copyWithToast(draftPrompt, "已复制提示词")}
+                disabled={draftPrompt.trim().length === 0}
+                className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10 disabled:opacity-50"
+              >
+                复制
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDraftPrompt("");
+                  setDraftTags([]);
+                  toast.info("已清空");
+                }}
+                disabled={draftPrompt.trim().length === 0}
+                className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10 disabled:opacity-50"
+              >
+                清空
+              </button>
+              <button
+                type="button"
+                onClick={goGenerateWithDraft}
+                className="rounded-2xl bg-gradient-to-r from-pink-500 via-violet-500 to-sky-500 px-4 py-2 text-sm font-semibold text-white hover:brightness-110 active:scale-[0.99]"
+              >
+                去生成
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-3 grid gap-3 lg:grid-cols-5">
+            <div className="lg:col-span-4">
+              <textarea
+                ref={composerRef}
+                value={draftPrompt}
+                onChange={(e) => setDraftPrompt(e.target.value)}
+                rows={5}
+                placeholder="在这里编辑提示词（建议包含：发型/妆容/服装/场景/光线/镜头/氛围）。"
+                className="w-full resize-none rounded-3xl border border-white/10 bg-black/35 px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] focus:outline-none focus:ring-2 focus:ring-pink-500/35"
+              />
+              {draftTags.length > 0 ? (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {draftTags.slice(0, 10).map((k) => (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => setDraftTags((prev) => prev.filter((x) => x !== k))}
+                      className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-zinc-200 hover:bg-white/10"
+                      title="点击移除"
+                    >
+                      {labelForTagKey(k)} <span className="ml-1 text-zinc-500">×</span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+            <div className="lg:col-span-1">
+              <div className="grid gap-2">
+                <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
+                  <div className="text-xs font-medium text-zinc-200">将携带参数</div>
+                  <div className="mt-2 text-xs text-zinc-400">
+                    风格：{STYLE_PRESETS.find((s) => s.id === draftStyleId)?.label ?? draftStyleId}
+                  </div>
+                  <div className="mt-1 text-xs text-zinc-400">尺寸：{draftSize}</div>
+                  <div className="mt-1 text-xs text-zinc-400">质量：{draftQuality}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDraftStyleId("photo");
+                    setDraftSize("1024x1536");
+                    setDraftQuality("auto");
+                    toast.info("已重置参数");
+                  }}
+                  className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10"
+                >
+                  重置参数
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
