@@ -95,7 +95,7 @@ export async function POST(req: Request) {
     // a missing profile row (this can happen if a previous attempt failed after auth user creation).
     if (createError || !created.user) {
       const message = createError?.message ?? "Signup failed.";
-      if (/already registered/i.test(message) || /already exists/i.test(message)) {
+      if (/already.*registered/i.test(message) || /already exists/i.test(message)) {
         const supabase = getSupabaseAnonServerClient();
         const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
           email,
