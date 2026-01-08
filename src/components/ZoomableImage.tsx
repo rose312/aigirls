@@ -26,7 +26,7 @@ export default function ZoomableImage({
   return (
     <div
       className={[
-        "relative w-full overflow-auto rounded-2xl border border-white/10 bg-black/30",
+        "group relative w-full overflow-auto rounded-2xl border border-white/10 bg-black/30",
         className ?? "",
       ].join(" ")}
     >
@@ -36,16 +36,16 @@ export default function ZoomableImage({
         draggable={false}
         onClick={() => setZoom((z) => (z === 1 ? 2 : 1))}
         className={[
-          "block h-auto select-none",
-          zoom === 1 ? `w-full object-contain ${maxHeightClassName}` : "w-[200%] cursor-zoom-out",
-          zoom === 1 ? "cursor-zoom-in" : "",
+          "block h-auto select-none transition-transform duration-500",
+          zoom === 1
+            ? `w-full cursor-zoom-in object-contain ${maxHeightClassName} group-hover:scale-[1.01]`
+            : "w-[220%] cursor-zoom-out",
         ].join(" ")}
         title={zoomLabel}
       />
-      <div className="pointer-events-none absolute bottom-2 left-2 rounded-xl border border-white/10 bg-black/40 px-2 py-1 text-[11px] text-zinc-200 backdrop-blur">
-        {zoom === 1 ? "点击图片放大" : "已放大（可拖动滚动条移动）"}
+      <div className="pointer-events-none absolute bottom-2 left-2 rounded-xl border border-white/10 bg-black/40 px-2 py-1 text-[11px] text-zinc-200 opacity-0 backdrop-blur transition-opacity group-hover:opacity-100">
+        {zoom === 1 ? "点击图片放大" : "已放大（可滚动查看细节）"}
       </div>
     </div>
   );
 }
-

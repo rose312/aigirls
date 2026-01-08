@@ -6,8 +6,10 @@ import { useRouter } from "next/navigation";
 import { SIZE_OPTIONS, STYLE_PRESETS, type StyleId } from "@/lib/presets";
 import { useGallery, type GalleryItem } from "@/app/providers";
 import { useAuth } from "@/app/providers";
+import { useToast } from "@/app/providers";
 import { aspectClassForSize } from "@/lib/aspect";
 import { TAG_GROUPS, labelForTagKey, parseTagKey, tagKey, type TagCategory } from "@/lib/tags";
+import { copyTextToClipboard } from "@/lib/clipboard";
 import ZoomableImage from "@/components/ZoomableImage";
 
 type SortMode = "newest" | "oldest" | "favorites";
@@ -24,6 +26,7 @@ export default function GirlsPage() {
   const router = useRouter();
   const { items, clear, remove, toggleFavorite } = useGallery();
   const { user, syncMyImages } = useAuth();
+  const toast = useToast();
 
   const [q, setQ] = useState("");
   const [styleFilter, setStyleFilter] = useState<StyleId | "all">("all");
@@ -112,6 +115,12 @@ export default function GirlsPage() {
 
     return sorted;
   }, [items, onlyFavorites, q, sizeFilter, sort, styleFilter, tagFilter]);
+
+  async function copyWithToast(text: string, okMessage: string) {
+    const ok = await copyTextToClipboard(text);
+    if (ok) toast.success(okMessage);
+    else toast.error("复制失败，请检查浏览器权限。");
+  }
 
   return (
     <div className="relative min-h-screen bg-zinc-950 text-zinc-50">
@@ -408,7 +417,7 @@ export default function GirlsPage() {
                       <button
                         type="button"
                         onClick={() => setActive(it)}
-                        className="group relative w-full overflow-hidden rounded-2xl border border-white/10 bg-black/30 text-left"
+                        className="group relative w-full overflow-hidden rounded-2xl border border-white/10 bg-black/30 text-left shadow-[0_0_0_1px_rgba(0,0,0,0.2)] transition hover:-translate-y-0.5 hover:border-white/20 hover:bg-black/25 hover:shadow-[0_16px_40px_rgba(0,0,0,0.45)] focus:outline-none focus:ring-2 focus:ring-pink-500/40"
                       >
                         <div className={aspectClassForSize(it.size)}>
                           {it.imageUrl ? (
@@ -416,14 +425,14 @@ export default function GirlsPage() {
                               src={it.imageUrl}
                               alt="generated"
                               loading="lazy"
-                              className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
+                              className="h-full w-full cursor-zoom-in object-cover transition-transform duration-500 will-change-transform group-hover:scale-[1.08]"
                             />
                           ) : (
                             <div className="h-full w-full animate-pulse bg-white/5" />
                           )}
                         </div>
 
-                        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-black/0 to-black/0 opacity-90" />
+                        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-black/0 opacity-90" />
 
                         <div className="absolute right-2 top-2 flex items-center gap-2">
                           <button
@@ -431,6 +440,7 @@ export default function GirlsPage() {
                             onClick={(e) => {
                               e.stopPropagation();
                               toggleFavorite(it.id);
+                              toast.info(it.favorite ? "已取消收藏" : "已收藏");
                             }}
                             className={[
                               "rounded-xl border px-2 py-1 text-xs backdrop-blur transition",
@@ -480,7 +490,7 @@ export default function GirlsPage() {
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              navigator.clipboard.writeText(it.prompt);
+                              void copyWithToast(it.prompt, "已复制提示词");
                             }}
                             className="rounded-xl border border-white/10 bg-white/10 px-2 py-1 text-[11px] text-zinc-200 backdrop-blur hover:bg-white/15"
                             title="复制提示词"
@@ -567,8 +577,12 @@ export default function GirlsPage() {
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
-                        onClick={() => toggleFavorite(active.id)}
-                        className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10"
+                        onClick={() => {
+                          toggleFavorite(active.id);
+                          setActive((prev) => (prev ? { ...prev, favorite: !prev.favorite } : prev));
+                          toast.info(active.favorite ? "已取消收藏" : "已收藏");
+                        }}
+                        className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10 active:scale-[0.98]"
                       >
                         {active.favorite ? "取消收藏" : "收藏"}
                       </button>
@@ -581,8 +595,8 @@ export default function GirlsPage() {
                       </a>
                       <button
                         type="button"
-                        onClick={() => navigator.clipboard.writeText(active.prompt)}
-                        className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10"
+                        onClick={() => void copyWithToast(active.prompt, "已复制提示词")}
+                        className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10 active:scale-[0.98]"
                       >
                         复制提示词
                       </button>
@@ -615,8 +629,8 @@ export default function GirlsPage() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => navigator.clipboard.writeText(active.imageUrl)}
-                        className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10"
+                        onClick={() => void copyWithToast(active.imageUrl, "已复制图片链接")}
+                        className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10 active:scale-[0.98]"
                       >
                         复制图片链接
                       </button>

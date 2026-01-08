@@ -11,7 +11,9 @@ import {
 } from "@/lib/presets";
 import { useGallery } from "@/app/providers";
 import { useAuth } from "@/app/providers";
+import { useToast } from "@/app/providers";
 import { aspectClassForSize } from "@/lib/aspect";
+import { copyTextToClipboard } from "@/lib/clipboard";
 import {
   TAG_GROUPS,
   labelForTagKey,
@@ -108,6 +110,7 @@ export default function Home() {
   const { items: images, addItems, clear } = useGallery();
   const { session, user, signInWithPassword, signOut, signUpWithPassword, syncMyImages } =
     useAuth();
+  const toast = useToast();
 
   const [prompt, setPrompt] = useState("");
   const [styleId, setStyleId] = useState<StyleId>("photo");
@@ -183,6 +186,12 @@ export default function Home() {
     const key = tagKey("extra", t);
     setSelectedTagKeys((prev) => (prev.includes(key) ? prev : [key, ...prev]).slice(0, 24));
     setExtraTag("");
+  }
+
+  async function copyWithToast(text: string, okMessage: string) {
+    const ok = await copyTextToClipboard(text);
+    if (ok) toast.success(okMessage);
+    else toast.error("复制失败，请检查浏览器权限。");
   }
 
   async function onGenerate() {
@@ -323,24 +332,50 @@ export default function Home() {
             <div className="rounded-2xl border border-white/10 bg-white/5 p-5 shadow-[0_0_0_1px_rgba(0,0,0,0.2)]">
               <div className="flex items-center justify-between gap-3">
                 <h2 className="text-sm font-medium text-zinc-200">提示词</h2>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setPrompt(
-                      "长发、温柔微笑、清透妆容、自然光、浅景深、背景虚化、时尚连衣裙",
-                    )
-                  }
-                  className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-zinc-200 hover:bg-white/10"
-                >
-                  填个示例
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setPrompt("长发、温柔微笑、清透妆容、自然光、浅景深、背景虚化、时尚连衣裙")
+                    }
+                    className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-zinc-200 hover:bg-white/10 active:scale-[0.98]"
+                  >
+                    示例
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void copyWithToast(prompt, "已复制提示词")}
+                    disabled={prompt.trim().length === 0}
+                    className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-zinc-200 hover:bg-white/10 active:scale-[0.98] disabled:opacity-50"
+                  >
+                    复制
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPrompt("")}
+                    disabled={prompt.trim().length === 0}
+                    className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-zinc-200 hover:bg-white/10 active:scale-[0.98] disabled:opacity-50"
+                  >
+                    清空
+                  </button>
+                </div>
+              </div>
+              <div className="mt-2 flex items-center justify-between text-[11px] text-zinc-400">
+                <span>Ctrl/⌘ + Enter 快速生成</span>
+                <span>{prompt.trim().length} 字</span>
               </div>
               <textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
+                onKeyDown={(e) => {
+                  if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+                    e.preventDefault();
+                    if (!busy) void onGenerate();
+                  }
+                }}
                 rows={5}
                 placeholder="例如：长发、微笑、白色衬衫与牛仔裤、咖啡馆自然光、浅景深..."
-                className="mt-2 w-full resize-none rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-pink-500/50"
+                className="mt-3 w-full resize-none rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] focus:outline-none focus:ring-2 focus:ring-pink-500/40"
               />
 
               <div className="mt-4 grid gap-4">
@@ -666,38 +701,55 @@ export default function Home() {
                   {images.map((img) => (
                     <div
                       key={img.id}
-                      className="group relative overflow-hidden rounded-2xl border border-white/10 bg-black/30"
+                      className="group relative overflow-hidden rounded-2xl border border-white/10 bg-black/30 shadow-[0_0_0_1px_rgba(0,0,0,0.2)] transition hover:-translate-y-0.5 hover:border-white/20 hover:bg-black/25 hover:shadow-[0_16px_40px_rgba(0,0,0,0.45)]"
                     >
                       <div className={aspectClassForSize(img.size)}>
                         <button
                           type="button"
                           onClick={() => setActiveId(img.id)}
-                          className="block h-full w-full"
-                          title="点击放大"
+                          className="block h-full w-full cursor-zoom-in"
+                          title="点击查看大图"
                         >
                           <img
                             src={img.imageUrl}
                             alt="generated"
                             loading="lazy"
-                            className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
+                            className="h-full w-full object-cover transition-transform duration-500 will-change-transform group-hover:scale-[1.08]"
                           />
                         </button>
                       </div>
-                      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-black/0 to-black/0 opacity-0 transition group-hover:opacity-100" />
-                      <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between gap-2 opacity-0 transition group-hover:opacity-100">
-                        <a
-                          className="rounded-lg bg-white/10 px-2 py-1 text-xs text-white backdrop-blur hover:bg-white/15"
-                          href={img.imageUrl}
-                          download={`ai-girl-${img.id}.png`}
-                        >
-                          下载
-                        </a>
+                      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-black/0 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+                      <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between gap-2 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+                        <div className="flex items-center gap-2">
+                          <a
+                            className="rounded-xl border border-white/10 bg-white/10 px-2.5 py-1.5 text-xs text-white backdrop-blur hover:bg-white/15 active:scale-[0.98]"
+                            href={img.imageUrl}
+                            download={`ai-girl-${img.id}.png`}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            下载
+                          </a>
+                          <button
+                            type="button"
+                            className="rounded-xl border border-white/10 bg-white/10 px-2.5 py-1.5 text-xs text-white backdrop-blur hover:bg-white/15 active:scale-[0.98]"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void copyWithToast(img.imageUrl, "已复制链接");
+                            }}
+                          >
+                            复制链接
+                          </button>
+                        </div>
                         <button
                           type="button"
-                          className="rounded-lg bg-white/10 px-2 py-1 text-xs text-white backdrop-blur hover:bg-white/15"
-                          onClick={() => navigator.clipboard.writeText(img.imageUrl)}
+                          className="rounded-xl border border-white/10 bg-white/10 px-2.5 py-1.5 text-xs text-white backdrop-blur hover:bg-white/15 active:scale-[0.98]"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void copyWithToast(img.prompt, "已复制提示词");
+                          }}
+                          title="复制提示词"
                         >
-                          复制链接
+                          复制提示词
                         </button>
                       </div>
                     </div>
@@ -753,7 +805,9 @@ export default function Home() {
                   <div className="lg:col-span-2">
                   <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
                     <p className="text-xs font-medium text-zinc-200">提示词</p>
-                    <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-100">{active.prompt}</p>
+                    <div className="mt-2 rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+                      <p className="whitespace-pre-wrap text-sm text-zinc-100">{active.prompt}</p>
+                    </div>
                     {(active.tagKeys ?? []).length > 0 ? (
                       <div className="mt-3 flex flex-wrap gap-2">
                         {(active.tagKeys ?? []).map((k) => (
@@ -769,15 +823,15 @@ export default function Home() {
                     <div className="mt-4 flex flex-wrap gap-2">
                       <button
                         type="button"
-                        onClick={() => navigator.clipboard.writeText(active.prompt)}
-                        className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10"
+                        onClick={() => void copyWithToast(active.prompt, "已复制提示词")}
+                        className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10 active:scale-[0.98]"
                       >
                         复制提示词
                       </button>
                       <button
                         type="button"
-                        onClick={() => navigator.clipboard.writeText(active.imageUrl)}
-                        className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10"
+                        onClick={() => void copyWithToast(active.imageUrl, "已复制图片链接")}
+                        className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10 active:scale-[0.98]"
                       >
                         复制图片链接
                       </button>

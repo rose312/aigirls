@@ -38,8 +38,23 @@ type AuthContextValue = {
   syncMyImages: () => Promise<void>;
 };
 
+type ToastKind = "success" | "error" | "info";
+type ToastItem = {
+  id: string;
+  kind: ToastKind;
+  message: string;
+};
+
+type ToastContextValue = {
+  toast: (message: string, kind?: ToastKind) => void;
+  success: (message: string) => void;
+  error: (message: string) => void;
+  info: (message: string) => void;
+};
+
 const GalleryContext = createContext<GalleryContextValue | null>(null);
 const AuthContext = createContext<AuthContextValue | null>(null);
+const ToastContext = createContext<ToastContextValue | null>(null);
 
 const STORAGE_KEY = "aigirls.gallery.v1";
 const MAX_ITEMS = 60;
@@ -99,10 +114,51 @@ async function setSupabaseSession(
   return error ? error.message : null;
 }
 
+function toastId() {
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function ToastViewport({
+  items,
+  onDismiss,
+}: {
+  items: ToastItem[];
+  onDismiss: (id: string) => void;
+}) {
+  return (
+    <div className="pointer-events-none fixed bottom-4 left-1/2 z-[60] w-[min(92vw,420px)] -translate-x-1/2 space-y-2">
+      {items.map((t) => (
+        <div
+          key={t.id}
+          className={[
+            "pointer-events-auto flex items-start justify-between gap-3 rounded-2xl border px-4 py-3 text-sm shadow-[0_10px_30px_rgba(0,0,0,0.35)] backdrop-blur transition",
+            t.kind === "success"
+              ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-50"
+              : t.kind === "error"
+                ? "border-rose-500/20 bg-rose-500/10 text-rose-50"
+                : "border-white/10 bg-white/10 text-zinc-50",
+          ].join(" ")}
+          role="status"
+        >
+          <div className="min-w-0 flex-1 break-words">{t.message}</div>
+          <button
+            type="button"
+            onClick={() => onDismiss(t.id)}
+            className="rounded-xl border border-white/10 bg-white/5 px-2 py-1 text-xs text-zinc-100 hover:bg-white/10 active:scale-[0.98]"
+          >
+            OK
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function AppProviders({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<GalleryItem[]>([]);
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
 
   useEffect(() => {
     const loaded = safeParseGallery(localStorage.getItem(STORAGE_KEY));
@@ -238,6 +294,22 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
     tryPersistGallery(items);
   }, [items]);
 
+  const toastValue = useMemo<ToastContextValue>(() => {
+    const push = (message: string, kind: ToastKind = "info") => {
+      const id = toastId();
+      setToasts((prev) => [{ id, kind, message }, ...prev].slice(0, 3));
+      window.setTimeout(() => {
+        setToasts((prev) => prev.filter((x) => x.id !== id));
+      }, 2400);
+    };
+    return {
+      toast: push,
+      success: (m) => push(m, "success"),
+      error: (m) => push(m, "error"),
+      info: (m) => push(m, "info"),
+    };
+  }, []);
+
   const galleryValue = useMemo<GalleryContextValue>(
     () => ({
       items,
@@ -320,9 +392,17 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <AuthContext.Provider value={authValue}>
-      <GalleryContext.Provider value={galleryValue}>{children}</GalleryContext.Provider>
-    </AuthContext.Provider>
+    <ToastContext.Provider value={toastValue}>
+      <AuthContext.Provider value={authValue}>
+        <GalleryContext.Provider value={galleryValue}>
+          {children}
+          <ToastViewport
+            items={toasts}
+            onDismiss={(id) => setToasts((prev) => prev.filter((t) => t.id !== id))}
+          />
+        </GalleryContext.Provider>
+      </AuthContext.Provider>
+    </ToastContext.Provider>
   );
 }
 
@@ -335,5 +415,11 @@ export function useGallery() {
 export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth must be used within AppProviders");
+  return ctx;
+}
+
+export function useToast() {
+  const ctx = useContext(ToastContext);
+  if (!ctx) throw new Error("useToast must be used within AppProviders");
   return ctx;
 }
