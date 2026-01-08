@@ -265,9 +265,10 @@ export default function Home() {
   }
 
   return (
-    <div className="relative min-h-screen bg-zinc-950 text-zinc-50">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_50%_at_20%_10%,rgba(236,72,153,0.18),transparent_60%),radial-gradient(55%_45%_at_80%_20%,rgba(59,130,246,0.18),transparent_55%),radial-gradient(60%_50%_at_50%_100%,rgba(168,85,247,0.14),transparent_60%)]" />
-      <div className="relative mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-10 sm:px-6 lg:px-8">
+    <div className="relative min-h-screen bg-[#05060a] text-zinc-50">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(800px_520px_at_15%_12%,rgba(236,72,153,0.14),transparent_60%),radial-gradient(800px_520px_at_85%_18%,rgba(59,130,246,0.14),transparent_60%),radial-gradient(900px_650px_at_50%_110%,rgba(168,85,247,0.12),transparent_60%)]" />
+      <div className="pointer-events-none absolute inset-0 opacity-[0.08] mix-blend-overlay [background-image:radial-gradient(circle_at_1px_1px,rgba(255,255,255,0.35)_1px,transparent_0)] [background-size:18px_18px]" />
+      <div className="relative mx-auto flex w-full max-w-7xl flex-col gap-10 px-4 py-10 sm:px-6 lg:px-8">
         <header className="flex flex-col gap-3">
             <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
@@ -329,7 +330,7 @@ export default function Home() {
 
         <main className="grid gap-6 lg:grid-cols-5">
           <section className="lg:col-span-2">
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-5 shadow-[0_0_0_1px_rgba(0,0,0,0.2)]">
+            <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-6 shadow-[0_22px_60px_rgba(0,0,0,0.55)] backdrop-blur">
               <div className="flex items-center justify-between gap-3">
                 <h2 className="text-sm font-medium text-zinc-200">提示词</h2>
                 <div className="flex items-center gap-2">
@@ -663,7 +664,7 @@ export default function Home() {
           </section>
 
           <section className="lg:col-span-3">
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+            <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-6 shadow-[0_22px_60px_rgba(0,0,0,0.55)] backdrop-blur">
               <div className="flex items-center justify-between gap-3">
                 <h2 className="text-sm font-medium text-zinc-200">预览 / 画廊</h2>
                 <button
@@ -714,7 +715,7 @@ export default function Home() {
                             src={img.imageUrl}
                             alt="generated"
                             loading="lazy"
-                            className="h-full w-full object-cover transition-transform duration-500 will-change-transform group-hover:scale-[1.08]"
+                            className="h-full w-full object-cover transition-transform duration-500 will-change-transform group-hover:scale-[1.14] group-hover:saturate-110"
                           />
                         </button>
                       </div>

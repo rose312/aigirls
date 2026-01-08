@@ -126,12 +126,13 @@ function ToastViewport({
   onDismiss: (id: string) => void;
 }) {
   return (
-    <div className="pointer-events-none fixed bottom-4 left-1/2 z-[60] w-[min(92vw,420px)] -translate-x-1/2 space-y-2">
+    <div className="pointer-events-none fixed left-1/2 top-4 z-[60] w-[min(92vw,440px)] -translate-x-1/2 space-y-2">
       {items.map((t) => (
         <div
           key={t.id}
           className={[
             "pointer-events-auto flex items-start justify-between gap-3 rounded-2xl border px-4 py-3 text-sm shadow-[0_10px_30px_rgba(0,0,0,0.35)] backdrop-blur transition",
+            "animate-[ui-toast-in_.18s_ease-out]",
             t.kind === "success"
               ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-50"
               : t.kind === "error"
