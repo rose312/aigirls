@@ -14,6 +14,7 @@ import { useAuth } from "@/app/providers";
 import { useToast } from "@/app/providers";
 import { aspectClassForSize } from "@/lib/aspect";
 import { copyTextToClipboard } from "@/lib/clipboard";
+import { PROMPT_PRESETS, type PromptPresetId } from "@/lib/prompt-presets";
 import {
   TAG_GROUPS,
   labelForTagKey,
@@ -22,6 +23,7 @@ import {
   type TagCategory,
 } from "@/lib/tags";
 import ZoomableImage from "@/components/ZoomableImage";
+import GalleryCard from "@/components/GalleryCard";
 import type { SafetyLevel } from "@/lib/prompt-safety";
 
 const QUALITY_OPTIONS: ReadonlyArray<{ id: ImageQuality; label: string; hint: string }> = [
@@ -113,6 +115,11 @@ export default function Home() {
   const toast = useToast();
 
   const [prompt, setPrompt] = useState("");
+  const [presetId, setPresetId] = useState<PromptPresetId | null>(
+    PROMPT_PRESETS[0]?.id ?? null,
+  );
+  const [keywords, setKeywords] = useState("");
+  const [optimizing, setOptimizing] = useState(false);
   const [styleId, setStyleId] = useState<StyleId>("photo");
   const [size, setSize] = useState<ImageSize>("1024x1536");
   const [quality, setQuality] = useState<ImageQuality>("auto");
@@ -192,6 +199,30 @@ export default function Home() {
     const ok = await copyTextToClipboard(text);
     if (ok) toast.success(okMessage);
     else toast.error("复制失败，请检查浏览器权限。");
+  }
+
+  async function onOptimizePrompt() {
+    setError(null);
+    setOptimizing(true);
+    try {
+      const res = await fetch("/api/prompt/optimize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keywords, presetId }),
+      });
+      const payload = (await res.json()) as { prompt?: string; error?: string };
+      if (!res.ok || !payload.prompt) {
+        throw new Error(payload.error ?? `优化失败（HTTP ${res.status}）`);
+      }
+      setPrompt(payload.prompt);
+      toast.success("已生成优化提示词");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "优化失败";
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setOptimizing(false);
+    }
   }
 
   async function onGenerate() {
@@ -473,34 +504,70 @@ export default function Home() {
                 <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
                   <div className="flex items-end justify-between gap-3">
                     <div>
-                      <p className="text-sm font-medium text-zinc-200">妹子图模板</p>
+                      <p className="text-sm font-medium text-zinc-200">大赛美女预设</p>
                       <p className="mt-0.5 text-xs text-zinc-400">
-                        一键填充提示词 + 风格 + 标签（非露骨、衣着完整）
+                        精简预设（少量），其余都交给你自由输入；支持“关键词 → 一键优化提示词”
                       </p>
                     </div>
                   </div>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                    {MEIZI_TEMPLATES.map((tpl) => (
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {PROMPT_PRESETS.map((p) => (
                       <button
-                        key={tpl.id}
+                        key={p.id}
                         type="button"
                         onClick={() => {
-                          setPrompt(tpl.prompt);
-                          setStyleId(tpl.styleId);
-                          setSize(tpl.size);
-                          setQuality(tpl.quality);
-                          setSelectedTagKeys(tpl.tagKeys);
-                          setSafetyLevel("standard");
+                          setPresetId(p.id);
+                          setKeywords(p.exampleKeywords);
+                          toast.info(`已选择：${p.label}`);
                         }}
-                        className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-left text-sm text-zinc-200 hover:bg-white/10"
+                        className={[
+                          "rounded-2xl border px-3 py-2 text-left text-sm transition",
+                          presetId === p.id
+                            ? "border-pink-500/40 bg-pink-500/10 text-zinc-50 shadow-[0_0_0_1px_rgba(236,72,153,0.15)]"
+                            : "border-white/10 bg-white/5 text-zinc-200 hover:bg-white/10",
+                        ].join(" ")}
                       >
                         <div className="flex items-center justify-between gap-3">
-                          <div className="font-semibold">{tpl.label}</div>
-                          <div className="text-xs text-zinc-400">{tpl.hint}</div>
+                          <div className="font-semibold">{p.label}</div>
+                          <div className="text-xs text-zinc-400">{p.hint}</div>
                         </div>
-                        <div className="mt-1 line-clamp-2 text-xs text-zinc-400">{tpl.prompt}</div>
                       </button>
                     ))}
+                  </div>
+
+                  <div className="mt-3 grid gap-2">
+                    <label className="text-xs text-zinc-400" htmlFor="keywords">
+                      关键字（可中文）：
+                    </label>
+                    <input
+                      id="keywords"
+                      value={keywords}
+                      onChange={(e) => setKeywords(e.target.value)}
+                      placeholder="例如：长发、红唇、晚礼服、舞台灯光、优雅微笑"
+                      className="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-pink-500/40"
+                    />
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void onOptimizePrompt()}
+                        disabled={optimizing || keywords.trim().length === 0}
+                        className="rounded-2xl bg-gradient-to-r from-pink-500 via-violet-500 to-sky-500 px-4 py-2.5 text-sm font-semibold text-white hover:brightness-110 disabled:opacity-50"
+                      >
+                        {optimizing ? "优化中…" : "一键优化提示词"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPrompt(keywords.trim());
+                          toast.success("已把关键词写入提示词");
+                        }}
+                        disabled={keywords.trim().length === 0}
+                        className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-zinc-200 hover:bg-white/10 disabled:opacity-50"
+                      >
+                        用关键词填入
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -698,62 +765,20 @@ export default function Home() {
                   </div>
                 </div>
               ) : (
-                <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
                   {images.map((img) => (
-                    <div
+                    <GalleryCard
                       key={img.id}
-                      className="group relative overflow-hidden rounded-2xl border border-white/10 bg-black/30 shadow-[0_0_0_1px_rgba(0,0,0,0.2)] transition hover:-translate-y-0.5 hover:border-white/20 hover:bg-black/25 hover:shadow-[0_16px_40px_rgba(0,0,0,0.45)]"
-                    >
-                      <div className={aspectClassForSize(img.size)}>
-                        <button
-                          type="button"
-                          onClick={() => setActiveId(img.id)}
-                          className="block h-full w-full cursor-zoom-in"
-                          title="点击查看大图"
-                        >
-                          <img
-                            src={img.imageUrl}
-                            alt="generated"
-                            loading="lazy"
-                            className="h-full w-full object-cover transition-transform duration-500 will-change-transform group-hover:scale-[1.14] group-hover:saturate-110"
-                          />
-                        </button>
-                      </div>
-                      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-black/0 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
-                      <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between gap-2 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                        <div className="flex items-center gap-2">
-                          <a
-                            className="rounded-xl border border-white/10 bg-white/10 px-2.5 py-1.5 text-xs text-white backdrop-blur hover:bg-white/15 active:scale-[0.98]"
-                            href={img.imageUrl}
-                            download={`ai-girl-${img.id}.png`}
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            下载
-                          </a>
-                          <button
-                            type="button"
-                            className="rounded-xl border border-white/10 bg-white/10 px-2.5 py-1.5 text-xs text-white backdrop-blur hover:bg-white/15 active:scale-[0.98]"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void copyWithToast(img.imageUrl, "已复制链接");
-                            }}
-                          >
-                            复制链接
-                          </button>
-                        </div>
-                        <button
-                          type="button"
-                          className="rounded-xl border border-white/10 bg-white/10 px-2.5 py-1.5 text-xs text-white backdrop-blur hover:bg-white/15 active:scale-[0.98]"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            void copyWithToast(img.prompt, "已复制提示词");
-                          }}
-                          title="复制提示词"
-                        >
-                          复制提示词
-                        </button>
-                      </div>
-                    </div>
+                      imageUrl={img.imageUrl}
+                      aspectClassName={aspectClassForSize(img.size)}
+                      title={img.styleLabel || "生成图"}
+                      subtitle={img.size}
+                      prompt={img.prompt}
+                      onOpen={() => setActiveId(img.id)}
+                      onCopyPrompt={() => void copyWithToast(img.prompt, "已复制提示词")}
+                      onCopyLink={() => void copyWithToast(img.imageUrl, "已复制图片链接")}
+                      downloadUrl={img.imageUrl}
+                    />
                   ))}
                 </div>
               )}

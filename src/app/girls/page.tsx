@@ -11,6 +11,7 @@ import { aspectClassForSize } from "@/lib/aspect";
 import { TAG_GROUPS, labelForTagKey, parseTagKey, tagKey, type TagCategory } from "@/lib/tags";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import ZoomableImage from "@/components/ZoomableImage";
+import GalleryCard from "@/components/GalleryCard";
 
 type SortMode = "newest" | "oldest" | "favorites";
 
@@ -127,7 +128,7 @@ export default function GirlsPage() {
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(800px_520px_at_15%_12%,rgba(236,72,153,0.14),transparent_60%),radial-gradient(800px_520px_at_85%_18%,rgba(59,130,246,0.14),transparent_60%),radial-gradient(900px_650px_at_50%_110%,rgba(168,85,247,0.12),transparent_60%)]" />
       <div className="pointer-events-none absolute inset-0 opacity-[0.08] mix-blend-overlay [background-image:radial-gradient(circle_at_1px_1px,rgba(255,255,255,0.35)_1px,transparent_0)] [background-size:18px_18px]" />
 
-      <div className="relative mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-10 sm:px-6 lg:px-8">
+      <div className="relative mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-10 sm:px-6 lg:px-8">
         <header className="flex flex-col gap-4">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
@@ -412,95 +413,25 @@ export default function GirlsPage() {
                   没有匹配结果，换个关键词或重置筛选试试。
                 </div>
               ) : (
-                <div className="mt-4 columns-1 gap-3 sm:columns-2 lg:columns-3">
+                <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
                   {filtered.map((it) => (
-                    <div key={it.id} className="mb-3 break-inside-avoid">
-                      <button
-                        type="button"
-                        onClick={() => setActive(it)}
-                        className="group relative w-full overflow-hidden rounded-2xl border border-white/10 bg-black/30 text-left shadow-[0_0_0_1px_rgba(0,0,0,0.2)] transition hover:-translate-y-0.5 hover:border-white/20 hover:bg-black/25 hover:shadow-[0_16px_40px_rgba(0,0,0,0.45)] focus:outline-none focus:ring-2 focus:ring-pink-500/40"
-                      >
-                        <div className={aspectClassForSize(it.size)}>
-                          {it.imageUrl ? (
-                            <img
-                              src={it.imageUrl}
-                              alt="generated"
-                              loading="lazy"
-                              className="h-full w-full cursor-zoom-in object-cover transition-transform duration-500 will-change-transform group-hover:scale-[1.14] group-hover:saturate-110"
-                            />
-                          ) : (
-                            <div className="h-full w-full animate-pulse bg-white/5" />
-                          )}
-                        </div>
-
-                        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-black/0 opacity-90" />
-
-                        <div className="absolute right-2 top-2 flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleFavorite(it.id);
-                              toast.info(it.favorite ? "已取消收藏" : "已收藏");
-                            }}
-                            className={[
-                              "rounded-xl border px-2 py-1 text-xs backdrop-blur transition",
-                              it.favorite
-                                ? "border-pink-500/40 bg-pink-500/20 text-pink-100"
-                                : "border-white/10 bg-white/10 text-zinc-200 hover:bg-white/15",
-                            ].join(" ")}
-                            aria-label={it.favorite ? "取消收藏" : "收藏"}
-                            title={it.favorite ? "取消收藏" : "收藏"}
-                          >
-                            {it.favorite ? "★" : "☆"}
-                          </button>
-                          <a
-                            href={it.imageUrl}
-                            download={`ai-girl-${it.id}.png`}
-                            onClick={(e) => e.stopPropagation()}
-                            className="rounded-xl border border-white/10 bg-white/10 px-2 py-1 text-xs text-zinc-200 backdrop-blur hover:bg-white/15"
-                            aria-label="下载"
-                            title="下载"
-                          >
-                            下载
-                          </a>
-                        </div>
-
-                        <div className="absolute bottom-2 left-2 right-2 flex items-end justify-between gap-2">
-                          <div className="min-w-0">
-                            <div className="truncate text-xs font-medium text-zinc-100">
-                              {it.styleLabel} · {it.size}
-                            </div>
-                            {(it.tagKeys ?? []).length > 0 ? (
-                              <div className="mt-1 flex flex-wrap gap-1">
-                                {(it.tagKeys ?? []).slice(0, 2).map((k) => (
-                                  <span
-                                    key={k}
-                                    className="rounded-lg border border-white/10 bg-white/10 px-2 py-0.5 text-[10px] text-zinc-200 backdrop-blur"
-                                  >
-                                    {labelForTagKey(k)}
-                                  </span>
-                                ))}
-                              </div>
-                            ) : null}
-                            <div className="truncate text-[11px] text-zinc-300">
-                              {formatTime(it.createdAt)}
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void copyWithToast(it.prompt, "已复制提示词");
-                            }}
-                            className="rounded-xl border border-white/10 bg-white/10 px-2 py-1 text-[11px] text-zinc-200 backdrop-blur hover:bg-white/15"
-                            title="复制提示词"
-                          >
-                            复制
-                          </button>
-                        </div>
-                      </button>
-                    </div>
+                    <GalleryCard
+                      key={it.id}
+                      imageUrl={it.imageUrl}
+                      aspectClassName={aspectClassForSize(it.size)}
+                      title={it.styleLabel}
+                      subtitle={it.size}
+                      prompt={it.prompt}
+                      favorite={it.favorite}
+                      onOpen={() => setActive(it)}
+                      onToggleFavorite={() => {
+                        toggleFavorite(it.id);
+                        toast.info(it.favorite ? "已取消收藏" : "已收藏");
+                      }}
+                      onCopyPrompt={() => void copyWithToast(it.prompt, "已复制提示词")}
+                      onCopyLink={() => void copyWithToast(it.imageUrl, "已复制图片链接")}
+                      downloadUrl={it.imageUrl || undefined}
+                    />
                   ))}
                 </div>
               )}

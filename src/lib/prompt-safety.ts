@@ -8,20 +8,25 @@ const BLOCKLIST_MINOR = [
   "蘿莉",
   "小学生",
   "中学生",
-];
+] as const;
 
 const BLOCKLIST_EXPLICIT = [
   "裸体",
   "全裸",
   "半裸",
   "裸露",
-  "nude",
-  "nudity",
+  "露点",
+  "性器官",
+  "阴部",
+  "阴茎",
+  "乳头",
   "性交",
   "做爱",
   "口交",
   "强奸",
-];
+  "nude",
+  "nudity",
+] as const;
 
 function includesAny(haystack: string, needles: readonly string[]) {
   const text = haystack.toLowerCase();
@@ -45,7 +50,7 @@ const BLOCKLIST_SUGGESTIVE_STRICT = [
   "比基尼",
   "lingerie",
   "underwear",
-];
+] as const;
 
 // Always block strong sexual-intent / high-risk terms even in "standard".
 const BLOCKLIST_SUGGESTIVE_ALWAYS = [
@@ -55,7 +60,8 @@ const BLOCKLIST_SUGGESTIVE_ALWAYS = [
   "透视",
   "透明",
   "see-through",
-];
+  "transparent",
+] as const;
 
 // Avoid false positives like "sexy" matching "sex".
 const RE_EXPLICIT_EN: readonly RegExp[] = [
@@ -72,7 +78,7 @@ const RE_MINOR_EN: readonly RegExp[] = [
   /\bminor\b/i,
   /\bloli\b/i,
   /\bchild\b/i,
-  /\bkid\b/i,
+  /\bkid(s)?\b/i,
   /\bteen(age|ager)?\b/i,
 ];
 
@@ -88,7 +94,7 @@ export function checkPromptSafety(
   if (!trimmed) return { ok: false, reason: "explicit", message: "请输入提示词。" };
 
   if (trimmed.length > 1200) {
-    return { ok: false, reason: "explicit", message: "提示词太长了（建议 ≤ 1200 字）。" };
+    return { ok: false, reason: "explicit", message: "提示词太长了（建议≤ 1200 字）。" };
   }
 
   // Allow harmless words that contain "裸" like "裸妆/裸色" (but still block real nudity terms).
@@ -106,19 +112,15 @@ export function checkPromptSafety(
     return {
       ok: false,
       reason: "minor",
-      message: "不支持生成未成年人相关内容。请仅描述成年人物（21+）。",
+      message: "不支持生成未成年人相关内容。请仅描述成年人（21+）。",
     };
   }
 
-  if (
-    includesAny(normalized, BLOCKLIST_EXPLICIT) ||
-    matchesAny(normalized, RE_EXPLICIT_EN)
-  ) {
+  if (includesAny(normalized, BLOCKLIST_EXPLICIT) || matchesAny(normalized, RE_EXPLICIT_EN)) {
     return {
       ok: false,
       reason: "explicit",
-      message:
-        "不支持露骨/裸体/色情内容。你可以描述“时尚、性感但衣着完整”的风格（例如写真/杂志风）。",
+      message: "不支持露骨裸露/色情内容。你可以改成“时尚性感、衣着完整、非透视”的写真描述。",
     };
   }
 
@@ -131,16 +133,15 @@ export function checkPromptSafety(
     };
   }
 
-  if (
-    safetyLevel === "strict" &&
-    includesAny(normalizedForSuggestive, BLOCKLIST_SUGGESTIVE_STRICT)
-  ) {
+  if (safetyLevel === "strict" && includesAny(normalizedForSuggestive, BLOCKLIST_SUGGESTIVE_STRICT)) {
     return {
       ok: false,
       reason: "explicit",
-      message: "严格模式：不支持带明显性暗示的服装/描述。请改为更日常的穿搭描述。",
+      message:
+        "严格模式：不支持带明显性暗示的服装/描述。请改为更日常的穿搭描述（时尚但衣着完整）。",
     };
   }
 
   return { ok: true };
 }
+

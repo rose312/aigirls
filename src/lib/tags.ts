@@ -1,10 +1,4 @@
-export type TagCategory =
-  | "hairColor"
-  | "hairStyle"
-  | "outfit"
-  | "scene"
-  | "mood"
-  | "extra";
+export type TagCategory = "hairColor" | "hairStyle" | "outfit" | "scene" | "mood" | "extra";
 
 export type TagGroup = {
   category: Exclude<TagCategory, "extra">;
@@ -21,11 +15,9 @@ export const TAG_GROUPS: ReadonlyArray<TagGroup> = [
       { id: "brown", label: "棕发" },
       { id: "blonde", label: "金发" },
       { id: "silver", label: "银发" },
-      { id: "pink", label: "粉发" },
-      { id: "blue", label: "蓝发" },
       { id: "red", label: "红发" },
       { id: "purple", label: "紫发" },
-      { id: "gradient", label: "渐变发" },
+      { id: "gradient", label: "渐变发色" },
     ],
   },
   {
@@ -38,7 +30,6 @@ export const TAG_GROUPS: ReadonlyArray<TagGroup> = [
       { id: "wavy", label: "微卷" },
       { id: "straight", label: "直发" },
       { id: "ponytail", label: "马尾" },
-      { id: "twinTails", label: "双马尾" },
       { id: "bun", label: "丸子头" },
       { id: "bangs", label: "刘海" },
     ],
@@ -50,15 +41,14 @@ export const TAG_GROUPS: ReadonlyArray<TagGroup> = [
       { id: "dress", label: "连衣裙" },
       { id: "casual", label: "休闲" },
       { id: "street", label: "街头风" },
-      { id: "business", label: "通勤风" },
-      { id: "sweater", label: "针织衫" },
-      { id: "hoodie", label: "卫衣" },
+      { id: "business", label: "通勤/西装" },
+      { id: "sweater", label: "针织/毛衣" },
       { id: "coat", label: "风衣/大衣" },
+      { id: "sports", label: "运动装" },
+      { id: "eveningGown", label: "晚礼服" },
       { id: "hanfu", label: "汉服" },
       { id: "kimono", label: "和风浴衣" },
-      { id: "sports", label: "运动风" },
-      { id: "swimwear", label: "泳装（比基尼）" },
-      { id: "lingerieAd", label: "内衣（广告风）" },
+      { id: "swimwear", label: "泳装（完整覆盖）" },
     ],
   },
   {
@@ -66,14 +56,14 @@ export const TAG_GROUPS: ReadonlyArray<TagGroup> = [
     label: "场景",
     options: [
       { id: "studio", label: "棚拍纯背景" },
+      { id: "windowLight", label: "窗边自然光" },
       { id: "cafe", label: "咖啡馆" },
-      { id: "street", label: "街头" },
+      { id: "street", label: "城市街头" },
       { id: "park", label: "公园" },
       { id: "library", label: "书店/图书馆" },
-      { id: "rainyNeon", label: "雨夜霓虹" },
-      { id: "sunset", label: "日落" },
-      { id: "windowLight", label: "窗边自然光" },
       { id: "garden", label: "花园" },
+      { id: "sunset", label: "日落" },
+      { id: "rainyNeon", label: "雨夜霓虹" },
       { id: "beach", label: "海边" },
     ],
   },
@@ -83,14 +73,13 @@ export const TAG_GROUPS: ReadonlyArray<TagGroup> = [
     options: [
       { id: "gentleSmile", label: "温柔微笑" },
       { id: "cool", label: "清冷" },
-      { id: "cute", label: "可爱" },
+      { id: "cute", label: "甜美" },
       { id: "elegant", label: "优雅" },
       { id: "confident", label: "自信" },
       { id: "mysterious", label: "神秘" },
       { id: "bright", label: "阳光" },
       { id: "serious", label: "克制" },
-      { id: "alluring", label: "魅惑眼神" },
-      { id: "lazy", label: "慵懒" },
+      { id: "alluring", label: "魅力眼神（克制）" },
     ],
   },
 ];
@@ -144,15 +133,14 @@ export function sanitizeTagKey(key: unknown): string | null {
   if (!parsed) return null;
 
   if (parsed.category === "extra") {
-    // keep freeform short tags, but strip newlines.
     const safeId = parsed.id.replace(/\s+/g, " ").trim();
     if (!safeId) return null;
     if (safeId.length > 40) return null;
     return tagKey("extra", safeId);
   }
 
-  // Only allow known options for fixed categories.
   const group = TAG_GROUPS.find((g) => g.category === parsed.category);
   const ok = group?.options.some((o) => o.id === parsed.id) ?? false;
   return ok ? trimmed : null;
 }
+
