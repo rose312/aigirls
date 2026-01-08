@@ -267,8 +267,15 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ identifier, password }),
           });
-          const payload = (await res.json()) as { session?: any; error?: string };
-          if (!res.ok || !payload.session) return payload.error ?? "登录失败。";
+          const payload = (await res.json()) as {
+            session?: any;
+            error?: string;
+            debug?: string;
+          };
+          if (!res.ok || !payload.session) {
+            const msg = payload.error ?? "登录失败。";
+            return payload.debug ? `${msg} (${payload.debug})` : msg;
+          }
           return await setSupabaseSession(supabase, payload.session);
         } catch (e) {
           return e instanceof Error ? e.message : "Unknown error";
@@ -285,8 +292,15 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ username, email, password }),
           });
-          const payload = (await res.json()) as { session?: any; error?: string };
-          if (!res.ok) return payload.error ?? "注册失败。";
+          const payload = (await res.json()) as {
+            session?: any;
+            error?: string;
+            debug?: string;
+          };
+          if (!res.ok) {
+            const msg = payload.error ?? "注册失败。";
+            return payload.debug ? `${msg} (${payload.debug})` : msg;
+          }
           if (payload.session?.access_token && payload.session?.refresh_token) {
             return await setSupabaseSession(supabase, payload.session);
           }
@@ -323,4 +337,3 @@ export function useAuth() {
   if (!ctx) throw new Error("useAuth must be used within AppProviders");
   return ctx;
 }
-
