@@ -67,7 +67,13 @@ async function waitForHttpOk(port, timeoutMs = 45_000) {
   let lastError = null;
   while (Date.now() < deadline) {
     try {
-      const res = await fetch(`http://localhost:${port}`, { method: "GET" });
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 2000);
+      const res = await fetch(`http://localhost:${port}`, {
+        method: "GET",
+        signal: controller.signal,
+        headers: { "Cache-Control": "no-cache" },
+      }).finally(() => clearTimeout(timer));
       if (res.ok) return { ok: true, status: res.status };
       lastError = new Error(`HTTP ${res.status}`);
     } catch (e) {
@@ -103,12 +109,16 @@ function stopPid(pid) {
 }
 
 async function startDev({ port }) {
+  const outLog = path.join(ROOT, "dev.out.log");
+  const errLog = path.join(ROOT, "dev.err.log");
+  const outFd = fs.openSync(outLog, "a");
+  const errFd = fs.openSync(errLog, "a");
   const child = spawn(
     "npm",
     ["run", "dev", "--", "--port", String(port)],
     {
       detached: true,
-      stdio: "ignore",
+      stdio: ["ignore", outFd, errFd],
       shell: true,
       windowsHide: true,
       env: { ...process.env },
@@ -184,4 +194,3 @@ main().catch((e) => {
   console.error("devserver: fatal", e);
   process.exit(1);
 });
-
