@@ -1,0 +1,361 @@
+// 伴侣服务
+import { getSupabase } from './supabase'
+import { getSupabaseServiceRoleClient } from './supabase-server'
+import type { Companion, AppearanceConfig, PersonalityConfig } from './database-setup'
+import { COMPANION_PRESETS } from './database-setup'
+
+export interface CreateCompanionRequest {
+  name: string
+  companion_type: 'neighbor' | 'office' | 'student' | 'custom'
+  appearance_config?: AppearanceConfig
+  personality_config?: PersonalityConfig
+  background?: string
+  is_public?: boolean
+}
+
+// 创建伴侣 (客户端调用API)
+export async function createCompanion(
+  userId: string, 
+  request: CreateCompanionRequest
+): Promise<Companion> {
+  const supabase = getSupabase()
+  const { data: { session } } = await supabase.auth.getSession()
+  
+  if (!session) {
+    throw new Error('用户未登录')
+  }
+  
+  const response = await fetch('/api/companions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${session.access_token}`
+    },
+    body: JSON.stringify(request)
+  })
+  
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.error || '创建伴侣失败')
+  }
+  
+  const { companion } = await response.json()
+  return companion
+}
+
+// 获取用户的伴侣列表 (客户端调用API)
+export async function getUserCompanions(userId: string): Promise<Companion[]> {
+  const supabase = getSupabase()
+  const { data: { session } } = await supabase.auth.getSession()
+  
+  if (!session) {
+    throw new Error('用户未登录')
+  }
+  
+  const response = await fetch('/api/companions', {
+    headers: {
+      'Authorization': `Bearer ${session.access_token}`
+    }
+  })
+  
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.error || '获取伴侣列表失败')
+  }
+  
+  const { companions } = await response.json()
+  return companions
+}
+
+// 获取单个伴侣 (直接数据库查询，用于服务端)
+export async function getCompanion(companionId: string, userId?: string): Promise<Companion | null> {
+  const supabase = getSupabase()
+  
+  let query = supabase
+    .from('companions')
+    .select('*')
+    .eq('id', companionId)
+  
+  // 如果提供了userId，检查权限
+  if (userId) {
+    query = query.or(`user_id.eq.${userId},is_public.eq.true`)
+  } else {
+    query = query.eq('is_public', true)
+  }
+  
+  const { data, error } = await query.single()
+  
+  if (error || !data) return null
+  return data
+}
+
+// 更新伴侣
+export async function updateCompanion(
+  companionId: string,
+  userId: string,
+  updates: Partial<CreateCompanionRequest>
+): Promise<Companion> {
+  const supabase = getSupabase()
+  
+  const { data, error } = await supabase
+    .from('companions')
+    .update({
+      ...updates,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', companionId)
+    .eq('user_id', userId)
+    .select()
+    .single()
+  
+  if (error) throw error
+  return data
+}
+
+// 删除伴侣
+export async function deleteCompanion(companionId: string, userId: string): Promise<void> {
+  const supabase = getSupabase()
+  
+  const { error } = await supabase
+    .from('companions')
+    .delete()
+    .eq('id', companionId)
+    .eq('user_id', userId)
+  
+  if (error) throw error
+}
+
+// 更新亲密度 (服务端使用)
+export async function updateIntimacyLevel(
+  userId: string,
+  companionId: string,
+  points: number = 1
+): Promise<number> {
+  const supabase = getSupabaseServiceRoleClient()
+  
+  const { data, error } = await supabase.rpc('update_intimacy_points', {
+    p_user_id: userId,
+    p_companion_id: companionId,
+    p_points: points
+  })
+  
+  if (error) throw error
+  return data
+}
+
+// 获取公开伴侣（伴侣广场）
+export async function getPublicCompanions(limit: number = 20): Promise<Companion[]> {
+  const supabase = getSupabase()
+  
+  const { data, error } = await supabase
+    .from('companions')
+    .select('*')
+    .eq('is_public', true)
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  
+  if (error) throw error
+  return data || []
+}
+
+// 服务端创建伴侣 (用于API路由)
+export async function createCompanionServer(
+  userId: string, 
+  request: CreateCompanionRequest
+): Promise<Companion> {
+  const supabase = getSupabase()
+  
+  // 使用预设配置或自定义配置
+  let appearance_config = request.appearance_config
+  let personality_config = request.personality_config
+  
+  if (request.companion_type !== 'custom') {
+    const preset = COMPANION_PRESETS[request.companion_type]
+    appearance_config = appearance_config || preset.appearance
+    personality_config = personality_config || {
+      type: preset.personality.type,
+      traits: [...preset.personality.traits],
+      speakingStyle: preset.personality.speakingStyle,
+      interests: [...preset.personality.interests]
+    }
+  }
+  
+  if (!appearance_config || !personality_config) {
+    throw new Error('缺少外观或性格配置')
+  }
+  
+  const { data, error } = await supabase
+    .from('companions')
+    .insert({
+      user_id: userId,
+      name: request.name,
+      companion_type: request.companion_type,
+      appearance_config,
+      personality_config,
+      background: request.background || generateDefaultBackground(request.companion_type),
+      is_public: request.is_public || false
+    })
+    .select()
+    .single()
+  
+  if (error) throw error
+  
+  // 生成头像
+  try {
+    const avatarUrl = await generateCompanionAvatar(data.id, appearance_config)
+    if (avatarUrl) {
+      await updateCompanionAvatar(data.id, avatarUrl)
+      data.avatar_url = avatarUrl
+    }
+  } catch (error) {
+    console.error('头像生成失败:', error)
+    // 不影响伴侣创建，继续执行
+  }
+  
+  return data
+}
+
+// 生成默认背景故事
+function generateDefaultBackground(type: string): string {
+  const backgrounds = {
+    neighbor: '我是住在你隔壁的女孩，从小一起长大。我喜欢安静的生活，经常在阳台上看书或者照顾我的小花园。我很享受和你聊天的时光，你总是能让我感到温暖和安心。',
+    office: '我是一名职场精英，在一家知名公司担任重要职位。工作虽然忙碌，但我热爱挑战和成长。在繁忙的工作之余，我希望能和你分享我的想法和经历，也想了解你的世界。',
+    student: '我是一名大学生，对世界充满好奇心。我喜欢学习新知识，也喜欢和朋友们一起玩耍。虽然有时候会为学业烦恼，但我总是保持乐观的态度。和你聊天让我觉得很开心！',
+    custom: '我是一个独特的存在，有着自己的故事和个性。我希望能够了解你，也希望你能够了解我。让我们一起创造属于我们的美好回忆吧。'
+  }
+  
+  return backgrounds[type as keyof typeof backgrounds] || backgrounds.custom
+}
+
+// 生成伴侣头像（使用OpenRouter Gemini）
+async function generateCompanionAvatar(
+  companionId: string, 
+  appearance: AppearanceConfig
+): Promise<string | null> {
+  try {
+    const prompt = buildAvatarPrompt(appearance)
+    
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': process.env.OPENROUTER_SITE_URL || '',
+        'X-Title': process.env.OPENROUTER_SITE_TITLE || ''
+      },
+      body: JSON.stringify({
+        model: process.env.OPENROUTER_IMAGE_MODEL,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: `Generate a high-quality anime-style portrait image: ${prompt}`
+              }
+            ]
+          }
+        ],
+        max_tokens: 1000
+      })
+    })
+    
+    if (!response.ok) {
+      throw new Error(`OpenRouter API错误: ${response.status}`)
+    }
+    
+    const data = await response.json()
+    const imageUrl = data.choices?.[0]?.message?.content
+    
+    if (!imageUrl) {
+      throw new Error('未获取到图像URL')
+    }
+    
+    // 下载并上传到七牛云
+    const imageResponse = await fetch(imageUrl)
+    const imageBuffer = Buffer.from(await imageResponse.arrayBuffer())
+    
+    // 上传到七牛云（使用现有的上传服务）
+    const qiniuUrl = await uploadToQiniu(imageBuffer, `companions/${companionId}`)
+    
+    return qiniuUrl
+  } catch (error) {
+    console.error('头像生成失败:', error)
+    return null
+  }
+}
+
+// 构建头像生成提示词
+function buildAvatarPrompt(appearance: AppearanceConfig): string {
+  const prompts = []
+  
+  // 基础描述
+  prompts.push('beautiful anime girl portrait')
+  
+  // 脸型
+  if (appearance.faceType) {
+    const faceTypes = {
+      sweet: 'sweet round face',
+      mature: 'mature elegant face',
+      youthful: 'youthful cute face'
+    }
+    prompts.push(faceTypes[appearance.faceType as keyof typeof faceTypes] || 'beautiful face')
+  }
+  
+  // 发型和发色
+  if (appearance.hairStyle && appearance.hairColor) {
+    const hairStyles = {
+      long_straight: 'long straight hair',
+      short_bob: 'short bob haircut',
+      twin_tails: 'twin tails hairstyle'
+    }
+    const hairColors = {
+      brown: 'brown hair',
+      black: 'black hair',
+      light_brown: 'light brown hair'
+    }
+    
+    const style = hairStyles[appearance.hairStyle as keyof typeof hairStyles] || 'beautiful hair'
+    const color = hairColors[appearance.hairColor as keyof typeof hairColors] || 'natural hair color'
+    prompts.push(`${style}, ${color}`)
+  }
+  
+  // 服装风格
+  if (appearance.clothingStyle) {
+    const clothingStyles = {
+      casual: 'casual clothing',
+      business: 'business attire',
+      school_uniform: 'school uniform'
+    }
+    prompts.push(clothingStyles[appearance.clothingStyle as keyof typeof clothingStyles] || 'stylish outfit')
+  }
+  
+  // 自定义提示词
+  if (appearance.customPrompt) {
+    prompts.push(appearance.customPrompt)
+  }
+  
+  // 质量标签
+  prompts.push('high quality', 'detailed', 'anime art style', 'soft lighting', 'portrait shot')
+  
+  return prompts.join(', ')
+}
+
+// 上传到七牛云（简化版本，需要完整实现）
+async function uploadToQiniu(imageBuffer: Buffer, path: string): Promise<string> {
+  // 这里需要实现七牛云上传逻辑
+  // 暂时返回占位符URL
+  return `https://via.placeholder.com/400x400?text=${encodeURIComponent('AI头像')}`
+}
+
+// 更新伴侣头像
+async function updateCompanionAvatar(companionId: string, avatarUrl: string): Promise<void> {
+  const supabase = getSupabase()
+  
+  const { error } = await supabase
+    .from('companions')
+    .update({ avatar_url: avatarUrl })
+    .eq('id', companionId)
+  
+  if (error) throw error
+}

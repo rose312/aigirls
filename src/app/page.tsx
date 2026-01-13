@@ -1,988 +1,344 @@
-"use client";
+'use client'
 
-import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import {
-  SIZE_OPTIONS,
-  STYLE_PRESETS,
-  type ImageQuality,
-  type ImageSize,
-  type StyleId,
-} from "@/lib/presets";
-import { useGallery } from "@/app/providers";
-import { useAuth } from "@/app/providers";
-import { useToast } from "@/app/providers";
-import { aspectClassForSize } from "@/lib/aspect";
-import { copyTextToClipboard } from "@/lib/clipboard";
-import { PROMPT_PRESETS, type PromptPresetId } from "@/lib/prompt-presets";
-import {
-  TAG_GROUPS,
-  labelForTagKey,
-  sanitizeTagKey,
-  tagKey,
-  type TagCategory,
-} from "@/lib/tags";
-import ZoomableImage from "@/components/ZoomableImage";
-import GalleryCard from "@/components/GalleryCard";
-import type { SafetyLevel } from "@/lib/prompt-safety";
-
-const QUALITY_OPTIONS: ReadonlyArray<{ id: ImageQuality; label: string; hint: string }> = [
-  { id: "auto", label: "自动", hint: "速度/质量平衡" },
-  { id: "low", label: "低", hint: "更快" },
-  { id: "medium", label: "中", hint: "更细节" },
-  { id: "high", label: "高", hint: "最清晰" },
-];
-
-function uid() {
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
-const MEIZI_TEMPLATES: ReadonlyArray<{
-  id: string;
-  label: string;
-  hint: string;
-  styleId: StyleId;
-  size: ImageSize;
-  quality: ImageQuality;
-  tagKeys: string[];
-  prompt: string;
-}> = [
-  {
-    id: "campus",
-    label: "清纯校花",
-    hint: "日系清透、自然光",
-    styleId: "meizitu",
-    size: "1024x1536",
-    quality: "auto",
-    tagKeys: [
-      tagKey("hairStyle", "long"),
-      tagKey("scene", "windowLight"),
-      tagKey("mood", "gentleSmile"),
-    ],
-    prompt:
-      "清透妆容、自然微笑、白色衬衫+短裙（不透视）、窗边自然光、浅景深、85mm 人像、干净背景",
-  },
-  {
-    id: "sweet",
-    label: "甜美邻家",
-    hint: "软糯氛围、细腻肤质",
-    styleId: "photo",
-    size: "1024x1536",
-    quality: "auto",
-    tagKeys: [tagKey("hairColor", "brown"), tagKey("outfit", "sweater"), tagKey("mood", "cute")],
-    prompt:
-      "邻家女孩、温柔眼神、浅色针织衫（完整覆盖、不透视）、柔光、背景虚化、肤质细腻、干净构图",
-  },
-  {
-    id: "office",
-    label: "轻熟通勤",
-    hint: "高级感、克制性感",
-    styleId: "glamour",
-    size: "1024x1536",
-    quality: "auto",
-    tagKeys: [tagKey("outfit", "business"), tagKey("mood", "confident"), tagKey("scene", "studio")],
-    prompt:
-      "轻熟气质、干净盘发或长发、通勤套装、克制性感、棚拍柔光、电影感质感、杂志大片风、浅景深",
-  },
-  {
-    id: "night",
-    label: "夜景氛围",
-    hint: "霓虹/雨夜、故事感",
-    styleId: "cinema",
-    size: "1024x1536",
-    quality: "auto",
-    tagKeys: [tagKey("scene", "rainyNeon"), tagKey("mood", "mysterious"), tagKey("outfit", "coat")],
-    prompt:
-      "城市雨夜霓虹、反射光、神秘眼神、风衣（完整覆盖）、湿润空气感、电影感调色、浅景深、胶片颗粒",
-  },
-  {
-    id: "swim",
-    label: "泳装写真",
-    hint: "不露点、大片质感",
-    styleId: "glamour",
-    size: "1024x1536",
-    quality: "auto",
-    tagKeys: [tagKey("outfit", "swimwear"), tagKey("scene", "sunset"), tagKey("mood", "elegant")],
-    prompt:
-      "泳装写真、比基尼（完整覆盖、不露点、不透视）、海边日落、金色逆光、皮肤高光、优雅姿态、杂志大片",
-  },
-];
+import React, { useState, useEffect } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import UXOptimizationSummary from '@/components/UXOptimizationSummary'
+import PersonalizationCenter from '@/components/PersonalizationCenter'
+import SmartPaymentGuidance from '@/components/SmartPaymentGuidance'
+import SocialEcosystem from '@/components/SocialEcosystem'
+import IntelligentCustomerService from '@/components/IntelligentCustomerService'
+import { usePaymentGuidance } from '@/lib/payment-guidance'
+import { useAnalytics } from '@/lib/analytics-monitoring'
 
 export default function Home() {
-  const { items: images, addItems, clear } = useGallery();
-  const { session, user, signInWithPassword, signOut, signUpWithPassword, syncMyImages } =
-    useAuth();
-  const toast = useToast();
-
-  const [prompt, setPrompt] = useState("");
-  const [presetId, setPresetId] = useState<PromptPresetId | null>(
-    PROMPT_PRESETS[0]?.id ?? null,
-  );
-  const [keywords, setKeywords] = useState("");
-  const [optimizing, setOptimizing] = useState(false);
-  const [styleId, setStyleId] = useState<StyleId>("photo");
-  const [size, setSize] = useState<ImageSize>("1024x1536");
-  const [quality, setQuality] = useState<ImageQuality>("auto");
-  const [n, setN] = useState(1);
-  const [selectedTagKeys, setSelectedTagKeys] = useState<string[]>([]);
-  const [extraTag, setExtraTag] = useState("");
-  const [safetyLevel, setSafetyLevel] = useState<SafetyLevel>("standard");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [lastModel, setLastModel] = useState<string | null>(null);
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [authOpen, setAuthOpen] = useState(false);
-  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
-  const [authIdentifier, setAuthIdentifier] = useState("");
-  const [authUsername, setAuthUsername] = useState("");
-  const [authEmail, setAuthEmail] = useState("");
-  const [authPassword, setAuthPassword] = useState("");
-  const [authError, setAuthError] = useState<string | null>(null);
-
-  const selectedStyle = useMemo(
-    () => STYLE_PRESETS.find((s) => s.id === styleId) ?? STYLE_PRESETS[0]!,
-    [styleId],
-  );
-
-  const active = useMemo(
-    () => (activeId ? images.find((it) => it.id === activeId) ?? null : null),
-    [activeId, images],
-  );
+  const [currentUserId] = useState('demo_user_001')
+  const [activeModal, setActiveModal] = useState<string | null>(null)
+  const [showWelcome, setShowWelcome] = useState(true)
+  
+  const { currentTrigger, trackBehavior } = usePaymentGuidance(currentUserId)
+  const { trackEvent } = useAnalytics()
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const p = params.get("prompt");
-    const s = params.get("style");
-    const z = params.get("size");
-    const q = params.get("quality");
-    const t = params.get("tags");
+    // 模拟用户进入页面
+    trackEvent('page_visit', { page: 'home' })
+    trackBehavior('session_start')
+    
+    // 3秒后隐藏欢迎界面
+    const timer = setTimeout(() => {
+      setShowWelcome(false)
+    }, 3000)
+    
+    return () => clearTimeout(timer)
+  }, [])
 
-    if (p) setPrompt(p);
-    if (
-      s === "photo" ||
-      s === "cinema" ||
-      s === "anime" ||
-      s === "glamour" ||
-      s === "meizitu" ||
-      s === "cyberpunk" ||
-      s === "guofeng" ||
-      s === "illustration"
-    ) {
-      setStyleId(s);
+  useEffect(() => {
+    // 监听支付引导触发
+    if (currentTrigger) {
+      setActiveModal('payment')
     }
-    if (z === "1024x1024" || z === "1024x1536" || z === "1536x1024") setSize(z);
-    if (q === "auto" || q === "low" || q === "medium" || q === "high") setQuality(q);
-    if (t) {
-      const keys = t
-        .split(",")
-        .map((x) => x.trim())
-        .map(sanitizeTagKey)
-        .filter((x): x is string => typeof x === "string");
-      const unique = Array.from(new Set(keys)).slice(0, 24);
-      if (unique.length > 0) setSelectedTagKeys(unique);
+  }, [currentTrigger])
+
+  const features = [
+    {
+      id: 'summary',
+      title: 'UX优化总览',
+      description: '查看系统整体优化状态和性能指标',
+      icon: '📊',
+      color: 'from-blue-500 to-purple-600'
+    },
+    {
+      id: 'personalization',
+      title: '个性化定制',
+      description: '打造专属于你的AI伴侣体验',
+      icon: '🎯',
+      color: 'from-purple-500 to-pink-600'
+    },
+    {
+      id: 'social',
+      title: '社交生态',
+      description: '与其他用户互动，参与社交游戏',
+      icon: '👥',
+      color: 'from-pink-500 to-red-600'
+    },
+    {
+      id: 'payment',
+      title: '智能升级',
+      description: '体验Premium功能，解锁更多可能',
+      icon: '💎',
+      color: 'from-green-500 to-blue-600'
+    },
+    {
+      id: 'support',
+      title: '智能客服',
+      description: '24/7智能客服，随时为您解答疑问',
+      icon: '🤖',
+      color: 'from-orange-500 to-yellow-600'
     }
-  }, []);
+  ]
 
-  function toggleTag(key: string) {
-    setSelectedTagKeys((prev) => (prev.includes(key) ? prev.filter((x) => x !== key) : [...prev, key]));
+  const handleFeatureClick = (featureId: string) => {
+    setActiveModal(featureId)
+    trackEvent('feature_accessed', { feature: featureId })
+    trackBehavior('feature_used', { feature: featureId })
   }
 
-  function addExtraTag() {
-    const t = extraTag.trim().replace(/\s+/g, " ");
-    if (!t) return;
-    const key = tagKey("extra", t);
-    setSelectedTagKeys((prev) => (prev.includes(key) ? prev : [key, ...prev]).slice(0, 24));
-    setExtraTag("");
-  }
+  const renderWelcomeScreen = () => (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-gradient-to-br from-purple-600 via-pink-600 to-blue-600 flex items-center justify-center z-50"
+    >
+      <div className="text-center text-white">
+        <motion.div
+          initial={{ scale: 0.5, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ duration: 0.8, ease: "easeOut" }}
+          className="mb-8"
+        >
+          <div className="text-8xl mb-4">✨</div>
+          <h1 className="text-4xl md:text-6xl font-bold mb-4">
+            AI美女伴侣平台
+          </h1>
+          <p className="text-xl md:text-2xl text-purple-100">
+            全新UX优化体验
+          </p>
+        </motion.div>
+        
+        <motion.div
+          initial={{ y: 20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ delay: 0.5, duration: 0.6 }}
+          className="space-y-4"
+        >
+          <div className="flex items-center justify-center space-x-2 text-purple-100">
+            <div className="w-3 h-3 bg-white rounded-full animate-pulse"></div>
+            <span>正在加载优化系统...</span>
+          </div>
+          
+          <div className="w-64 h-2 bg-white bg-opacity-20 rounded-full mx-auto overflow-hidden">
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: '100%' }}
+              transition={{ duration: 2.5, ease: "easeInOut" }}
+              className="h-full bg-white rounded-full"
+            />
+          </div>
+        </motion.div>
+      </div>
+    </motion.div>
+  )
 
-  async function copyWithToast(text: string, okMessage: string) {
-    const ok = await copyTextToClipboard(text);
-    if (ok) toast.success(okMessage);
-    else toast.error("复制失败，请检查浏览器权限。");
-  }
+  const renderMainInterface = () => (
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50">
+      {/* 顶部导航 */}
+      <motion.header
+        initial={{ y: -20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        className="bg-white shadow-sm border-b border-gray-200"
+      >
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center py-4">
+            <div className="flex items-center space-x-4">
+              <div className="text-2xl">💝</div>
+              <div>
+                <h1 className="text-xl font-bold text-gray-900">AI伴侣平台</h1>
+                <p className="text-sm text-gray-600">UX优化演示系统</p>
+              </div>
+            </div>
+            
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-2 text-sm text-gray-600">
+                <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+                <span>系统运行正常</span>
+              </div>
+              
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => handleFeatureClick('support')}
+                className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+                title="客服支持"
+              >
+                🎧
+              </motion.button>
+            </div>
+          </div>
+        </div>
+      </motion.header>
 
-  async function onOptimizePrompt() {
-    setError(null);
-    setOptimizing(true);
-    try {
-      const res = await fetch("/api/prompt/optimize", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ keywords, presetId }),
-      });
-      const payload = (await res.json()) as { prompt?: string; error?: string };
-      if (!res.ok || !payload.prompt) {
-        throw new Error(payload.error ?? `优化失败（HTTP ${res.status}）`);
-      }
-      setPrompt(payload.prompt);
-      toast.success("已生成优化提示词");
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "优化失败";
-      setError(msg);
-      toast.error(msg);
-    } finally {
-      setOptimizing(false);
-    }
-  }
+      {/* 主要内容区域 */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* 欢迎区域 */}
+        <motion.div
+          initial={{ y: 20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ delay: 0.2 }}
+          className="text-center mb-12"
+        >
+          <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
+            体验全新的AI伴侣平台
+          </h2>
+          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+            我们重新设计了整个用户体验，从零门槛体验到智能个性化，
+            从社交互动到智能客服，每一个细节都为您精心优化。
+          </p>
+        </motion.div>
 
-  async function onGenerate() {
-    setError(null);
-    setBusy(true);
-    try {
-      const res = await fetch("/api/generate", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
-        },
-        body: JSON.stringify({
-          prompt,
-          styleId,
-          size,
-          quality,
-          n,
-          tagKeys: selectedTagKeys,
-          safetyLevel,
-        }),
-      });
+        {/* 功能卡片网格 */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
+          {features.map((feature, index) => (
+            <motion.div
+              key={feature.id}
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ delay: 0.3 + index * 0.1 }}
+              whileHover={{ scale: 1.02, y: -5 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => handleFeatureClick(feature.id)}
+              className="bg-white rounded-xl shadow-lg border border-gray-200 p-6 cursor-pointer hover:shadow-xl transition-all duration-300"
+            >
+              <div className={`w-16 h-16 bg-gradient-to-r ${feature.color} rounded-lg flex items-center justify-center mb-4`}>
+                <span className="text-2xl text-white">{feature.icon}</span>
+              </div>
+              
+              <h3 className="text-xl font-bold text-gray-900 mb-2">
+                {feature.title}
+              </h3>
+              
+              <p className="text-gray-600 mb-4">
+                {feature.description}
+              </p>
+              
+              <div className="flex items-center text-purple-600 font-medium">
+                <span>立即体验</span>
+                <span className="ml-2">→</span>
+              </div>
+            </motion.div>
+          ))}
+        </div>
 
-      const payload = (await res.json()) as
-        | {
-          images: Array<{ url: string; mime: string; key?: string; expiresAt?: number }>;
-            model?: string;
-            provider?: string;
-            storage?: string;
-            warning?: string;
-          }
-        | { error: string };
+        {/* 系统状态概览 */}
+        <motion.div
+          initial={{ y: 20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ delay: 0.8 }}
+          className="bg-white rounded-xl shadow-lg border border-gray-200 p-6"
+        >
+          <h3 className="text-xl font-bold text-gray-900 mb-6">系统优化成果</h3>
+          
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            {[
+              { label: '用户体验提升', value: '85%', icon: '📈' },
+              { label: '响应速度优化', value: '60%', icon: '⚡' },
+              { label: '转化率提升', value: '45%', icon: '💰' },
+              { label: '用户满意度', value: '4.8/5', icon: '⭐' }
+            ].map((stat, index) => (
+              <motion.div
+                key={index}
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ delay: 1 + index * 0.1 }}
+                className="text-center"
+              >
+                <div className="text-3xl mb-2">{stat.icon}</div>
+                <div className="text-2xl font-bold text-gray-900 mb-1">
+                  {stat.value}
+                </div>
+                <div className="text-sm text-gray-600">{stat.label}</div>
+              </motion.div>
+            ))}
+          </div>
+        </motion.div>
+      </main>
 
-      if (!res.ok) {
-        const message = "error" in payload ? payload.error : `生成失败（HTTP ${res.status}）`;
-        throw new Error(message);
-      }
-
-      if (!("images" in payload) || !payload.images?.length) {
-        throw new Error("没有拿到图片数据。");
-      }
-
-      const model = payload.model ?? null;
-      setLastModel(model);
-      const now = Date.now();
-      const next = payload.images.map((img) => ({
-        id: uid(),
-        createdAt: now,
-        prompt: prompt.trim(),
-        styleId,
-        styleLabel: selectedStyle.label,
-        size,
-        quality,
-        model,
-        tagKeys: selectedTagKeys,
-        imageUrl: img.url,
-        imageKey: payload.storage === "qiniu" ? img.key : undefined,
-        urlExpiresAt: typeof img.expiresAt === "number" ? img.expiresAt : null,
-        favorite: false,
-      }));
-      addItems(next);
-      if (user) {
-        // refresh from DB so we keep keys for private buckets
-        await syncMyImages();
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "未知错误");
-    } finally {
-      setBusy(false);
-    }
-  }
+      {/* 浮动操作按钮 */}
+      <motion.div
+        initial={{ scale: 0 }}
+        animate={{ scale: 1 }}
+        transition={{ delay: 1.2 }}
+        className="fixed bottom-6 right-6 z-40"
+      >
+        <motion.button
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.9 }}
+          onClick={() => handleFeatureClick('support')}
+          className="w-14 h-14 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-300 flex items-center justify-center"
+        >
+          <span className="text-2xl">🤖</span>
+        </motion.button>
+      </motion.div>
+    </div>
+  )
 
   return (
-    <div className="relative min-h-screen bg-[#05060a] text-zinc-50">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(800px_520px_at_15%_12%,rgba(236,72,153,0.14),transparent_60%),radial-gradient(800px_520px_at_85%_18%,rgba(59,130,246,0.14),transparent_60%),radial-gradient(900px_650px_at_50%_110%,rgba(168,85,247,0.12),transparent_60%)]" />
-      <div className="pointer-events-none absolute inset-0 opacity-[0.08] mix-blend-overlay [background-image:radial-gradient(circle_at_1px_1px,rgba(255,255,255,0.35)_1px,transparent_0)] [background-size:18px_18px]" />
-      <div className="relative mx-auto flex w-full max-w-7xl flex-col gap-10 px-4 py-10 sm:px-6 lg:px-8">
-        <header className="flex flex-col gap-3">
-            <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-pink-500 via-violet-500 to-sky-500 shadow-[0_0_0_1px_rgba(255,255,255,0.12)]" />
-              <div>
-                <h1 className="text-xl font-semibold tracking-tight">AI 女孩工坊</h1>
-                <p className="text-sm text-zinc-300">
-                  生成高质量人像（仅限成年、非露骨）。
-                  {lastModel ? ` 模型：${lastModel}` : ""}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Link
-                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10"
-                href="/girls"
-                title="查看生成的图片画廊"
-              >
-                女孩库
-              </Link>
-              <a
-                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10"
-                href="https://openrouter.ai/docs/guides/image-generation"
-                target="_blank"
-                rel="noreferrer"
-                title="OpenRouter 图片生成文档"
-              >
-                API 文档
-              </a>
-              {user ? (
-                <button
-                  type="button"
-                  onClick={() => signOut()}
-                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10"
-                  title={user.email ?? "已登录"}
-                >
-                  退出
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAuthOpen(true);
-                    setAuthMode("signin");
-                    setAuthError(null);
-                    setAuthIdentifier("");
-                    setAuthUsername("");
-                    setAuthEmail("");
-                    setAuthPassword("");
-                  }}
-                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10"
-                >
-                  登录
-                </button>
-              )}
-            </div>
-          </div>
-        </header>
+    <>
+      <AnimatePresence>
+        {showWelcome && renderWelcomeScreen()}
+      </AnimatePresence>
+      
+      {!showWelcome && renderMainInterface()}
 
-        <main className="grid gap-6 lg:grid-cols-5">
-          <section className="lg:col-span-2">
-            <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-6 shadow-[0_22px_60px_rgba(0,0,0,0.55)] backdrop-blur">
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-sm font-medium text-zinc-200">提示词</h2>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setPrompt("长发、温柔微笑、清透妆容、自然光、浅景深、背景虚化、时尚连衣裙")
-                    }
-                    className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-zinc-200 hover:bg-white/10 active:scale-[0.98]"
-                  >
-                    示例
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void copyWithToast(prompt, "已复制提示词")}
-                    disabled={prompt.trim().length === 0}
-                    className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-zinc-200 hover:bg-white/10 active:scale-[0.98] disabled:opacity-50"
-                  >
-                    复制
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPrompt("")}
-                    disabled={prompt.trim().length === 0}
-                    className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-zinc-200 hover:bg-white/10 active:scale-[0.98] disabled:opacity-50"
-                  >
-                    清空
-                  </button>
-                </div>
-              </div>
-              <div className="mt-2 flex items-center justify-between text-[11px] text-zinc-400">
-                <span>Ctrl/⌘ + Enter 快速生成</span>
-                <span>{prompt.trim().length} 字</span>
-              </div>
-              <textarea
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                onKeyDown={(e) => {
-                  if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-                    e.preventDefault();
-                    if (!busy) void onGenerate();
-                  }
-                }}
-                rows={5}
-                placeholder="例如：长发、微笑、白色衬衫与牛仔裤、咖啡馆自然光、浅景深..."
-                className="mt-3 w-full resize-none rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] focus:outline-none focus:ring-2 focus:ring-pink-500/40"
-              />
-
-              <div className="mt-4 grid gap-4">
-                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                  <div className="flex items-end justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-medium text-zinc-200">细分标签</p>
-                      <p className="mt-0.5 text-xs text-zinc-400">
-                        可选：发色/发型/穿搭/场景/气质（会同时用于提示词与筛选）
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedTagKeys([])}
-                      disabled={selectedTagKeys.length === 0}
-                      className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-zinc-200 hover:bg-white/10 disabled:opacity-50"
-                    >
-                      重置
-                    </button>
-                  </div>
-
-                  <div className="mt-3 grid gap-4">
-                    {TAG_GROUPS.map((group) => (
-                      <div key={group.category}>
-                        <p className="text-xs font-medium text-zinc-300">{group.label}</p>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {group.options.map((opt) => {
-                            const key = tagKey(group.category as TagCategory, opt.id);
-                            const active = selectedTagKeys.includes(key);
-                            return (
-                              <button
-                                key={key}
-                                type="button"
-                                onClick={() => toggleTag(key)}
-                                className={[
-                                  "rounded-xl border px-3 py-1.5 text-sm transition",
-                                  active
-                                    ? "border-pink-500/40 bg-pink-500/10 text-zinc-50"
-                                    : "border-white/10 bg-white/5 text-zinc-200 hover:bg-white/10",
-                                ].join(" ")}
-                              >
-                                {opt.label}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}
-
-                    <div>
-                      <p className="text-xs font-medium text-zinc-300">自定义标签</p>
-                      <div className="mt-2 flex gap-2">
-                        <input
-                          value={extraTag}
-                          onChange={(e) => setExtraTag(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              addExtraTag();
-                            }
-                          }}
-                          placeholder="例如：眼镜、珍珠耳环、单肩包..."
-                          className="flex-1 rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-pink-500/50"
-                        />
-                        <button
-                          type="button"
-                          onClick={addExtraTag}
-                          className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10"
-                        >
-                          添加
-                        </button>
-                      </div>
-                    </div>
-
-                    {selectedTagKeys.length > 0 ? (
-                      <div className="flex flex-wrap gap-2">
-                        {selectedTagKeys.map((k) => (
-                          <button
-                            key={k}
-                            type="button"
-                            onClick={() => toggleTag(k)}
-                            className="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-zinc-200 hover:bg-white/10"
-                            title="点击移除"
-                          >
-                            {labelForTagKey(k)}
-                            <span className="ml-2 text-zinc-500">×</span>
-                          </button>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                  <div className="flex items-end justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-medium text-zinc-200">大赛美女预设</p>
-                      <p className="mt-0.5 text-xs text-zinc-400">
-                        精简预设（少量），其余都交给你自由输入；支持“关键词 → 一键优化提示词”
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {PROMPT_PRESETS.map((p) => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => {
-                          setPresetId(p.id);
-                          setKeywords(p.exampleKeywords);
-                          toast.info(`已选择：${p.label}`);
-                        }}
-                        className={[
-                          "rounded-2xl border px-3 py-2 text-left text-sm transition",
-                          presetId === p.id
-                            ? "border-pink-500/40 bg-pink-500/10 text-zinc-50 shadow-[0_0_0_1px_rgba(236,72,153,0.15)]"
-                            : "border-white/10 bg-white/5 text-zinc-200 hover:bg-white/10",
-                        ].join(" ")}
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="font-semibold">{p.label}</div>
-                          <div className="text-xs text-zinc-400">{p.hint}</div>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="mt-3 grid gap-2">
-                    <label className="text-xs text-zinc-400" htmlFor="keywords">
-                      关键字（可中文）：
-                    </label>
-                    <input
-                      id="keywords"
-                      value={keywords}
-                      onChange={(e) => setKeywords(e.target.value)}
-                      placeholder="例如：长发、红唇、晚礼服、舞台灯光、优雅微笑"
-                      className="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-pink-500/40"
-                    />
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => void onOptimizePrompt()}
-                        disabled={optimizing || keywords.trim().length === 0}
-                        className="rounded-2xl bg-gradient-to-r from-pink-500 via-violet-500 to-sky-500 px-4 py-2.5 text-sm font-semibold text-white hover:brightness-110 disabled:opacity-50"
-                      >
-                        {optimizing ? "优化中…" : "一键优化提示词"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPrompt(keywords.trim());
-                          toast.success("已把关键词写入提示词");
-                        }}
-                        disabled={keywords.trim().length === 0}
-                        className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-zinc-200 hover:bg-white/10 disabled:opacity-50"
-                      >
-                        用关键词填入
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex items-end justify-between">
-                    <p className="text-sm font-medium text-zinc-200">风格</p>
-                    <p className="text-xs text-zinc-400">{selectedStyle.hint}</p>
-                  </div>
-                  <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
-                    {STYLE_PRESETS.map((s) => (
-                      <button
-                        key={s.id}
-                        type="button"
-                        onClick={() => setStyleId(s.id)}
-                        className={[
-                          "rounded-xl border px-3 py-2 text-left text-sm transition",
-                          s.id === styleId
-                            ? "border-pink-500/40 bg-pink-500/10 text-zinc-50 shadow-[0_0_0_1px_rgba(236,72,153,0.15)]"
-                            : "border-white/10 bg-white/5 text-zinc-200 hover:bg-white/10",
-                        ].join(" ")}
-                      >
-                        <div className="font-medium">{s.label}</div>
-                        <div className="mt-0.5 text-xs text-zinc-400">{s.hint}</div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div>
-                    <p className="text-sm font-medium text-zinc-200">尺寸</p>
-                    <div className="mt-2 grid gap-2">
-                      {SIZE_OPTIONS.map((opt) => (
-                        <button
-                          key={opt.id}
-                          type="button"
-                          onClick={() => setSize(opt.id)}
-                          className={[
-                            "flex items-center justify-between rounded-xl border px-3 py-2 text-sm transition",
-                            opt.id === size
-                              ? "border-sky-500/40 bg-sky-500/10 text-zinc-50"
-                              : "border-white/10 bg-white/5 text-zinc-200 hover:bg-white/10",
-                          ].join(" ")}
-                        >
-                          <span className="font-medium">{opt.label}</span>
-                          <span className="text-xs text-zinc-400">{opt.hint}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <p className="text-sm font-medium text-zinc-200">质量</p>
-                    <div className="mt-2 grid gap-2">
-                      {QUALITY_OPTIONS.map((opt) => (
-                        <button
-                          key={opt.id}
-                          type="button"
-                          onClick={() => setQuality(opt.id)}
-                          className={[
-                            "flex items-center justify-between rounded-xl border px-3 py-2 text-sm transition",
-                            opt.id === quality
-                              ? "border-violet-500/40 bg-violet-500/10 text-zinc-50"
-                              : "border-white/10 bg-white/5 text-zinc-200 hover:bg-white/10",
-                          ].join(" ")}
-                        >
-                          <span className="font-medium">{opt.label}</span>
-                          <span className="text-xs text-zinc-400">{opt.hint}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between gap-3">
-                  <label className="text-sm font-medium text-zinc-200" htmlFor="count">
-                    张数（1-4）
-                  </label>
-                  <input
-                    id="count"
-                    type="number"
-                    min={1}
-                    max={4}
-                    value={n}
-                    onChange={(e) => setN(Math.max(1, Math.min(4, Number(e.target.value) || 1)))}
-                    className="w-20 rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-pink-500/50"
-                  />
-                </div>
-
-                {error ? (
-                  <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-100">
-                    {error}
-                  </div>
-                ) : (
-                  <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-xs text-zinc-300">
-                    提示：安全过滤是强制的，不能关闭（会拦截未成年人、裸体、露骨色情等）。标准模式允许“性感但衣着完整”的写真风格；严格模式更保守。
-                  </div>
-                )}
-
-                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-medium text-zinc-200">安全强度</p>
-                      <p className="mt-0.5 text-xs text-zinc-400">
-                        标准：拦截露骨/裸体；严格：额外拦截明显性暗示描述
-                      </p>
-                    </div>
-                  </div>
-                  <div className="mt-3 grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setSafetyLevel("standard")}
-                      className={[
-                        "rounded-xl border px-3 py-2 text-left text-sm transition",
-                        safetyLevel === "standard"
-                          ? "border-emerald-500/40 bg-emerald-500/10 text-zinc-50"
-                          : "border-white/10 bg-white/5 text-zinc-200 hover:bg-white/10",
-                      ].join(" ")}
-                    >
-                      <div className="font-medium">标准</div>
-                      <div className="mt-0.5 text-xs text-zinc-400">推荐（默认）</div>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSafetyLevel("strict")}
-                      className={[
-                        "rounded-xl border px-3 py-2 text-left text-sm transition",
-                        safetyLevel === "strict"
-                          ? "border-amber-500/40 bg-amber-500/10 text-zinc-50"
-                          : "border-white/10 bg-white/5 text-zinc-200 hover:bg-white/10",
-                      ].join(" ")}
-                    >
-                      <div className="font-medium">严格</div>
-                      <div className="mt-0.5 text-xs text-zinc-400">更保守</div>
-                    </button>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={onGenerate}
-                  disabled={busy}
-                  className={[
-                    "mt-1 inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold transition",
-                    busy
-                      ? "cursor-not-allowed bg-white/10 text-zinc-300"
-                      : "bg-gradient-to-r from-pink-500 via-violet-500 to-sky-500 text-white shadow-[0_10px_40px_-10px_rgba(236,72,153,0.5)] hover:brightness-110",
-                  ].join(" ")}
-                >
-                  {busy ? (
-                    <span className="inline-flex items-center gap-2">
-                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                      生成中...
-                    </span>
-                  ) : (
-                    "生成 AI 女孩"
-                  )}
-                </button>
-              </div>
-            </div>
-          </section>
-
-          <section className="lg:col-span-3">
-            <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-6 shadow-[0_22px_60px_rgba(0,0,0,0.55)] backdrop-blur">
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-sm font-medium text-zinc-200">预览 / 画廊</h2>
-                <button
-                  type="button"
-                  onClick={clear}
-                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-zinc-200 hover:bg-white/10"
-                  disabled={images.length === 0}
-                >
-                  清空
-                </button>
-              </div>
-
-              {images.length === 0 ? (
-                <div className="mt-4 grid place-items-center rounded-2xl border border-dashed border-white/15 bg-black/20 p-10 text-center">
-                  <div className="max-w-md">
-                    <p className="text-base font-semibold">还没有作品</p>
-                    <p className="mt-1 text-sm text-zinc-300">
-                      左侧写提示词 → 选择风格 → 点击“生成 AI 女孩”。
-                    </p>
-                    <div className="mt-6 flex justify-center">
-                      <div className="h-10 w-10 rounded-2xl bg-gradient-to-br from-pink-500/60 via-violet-500/60 to-sky-500/60 blur-[0.2px]" />
-                    </div>
-                    <div className="mt-5">
-                      <Link
-                        href="/girls"
-                        className="inline-flex rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-zinc-100 hover:bg-white/10"
-                      >
-                        去女孩库
-                      </Link>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
-                  {images.map((img) => (
-                    <GalleryCard
-                      key={img.id}
-                      imageUrl={img.imageUrl}
-                      aspectClassName={aspectClassForSize(img.size)}
-                      title={img.styleLabel || "生成图"}
-                      subtitle={img.size}
-                      prompt={img.prompt}
-                      onOpen={() => setActiveId(img.id)}
-                      onCopyPrompt={() => void copyWithToast(img.prompt, "已复制提示词")}
-                      onCopyLink={() => void copyWithToast(img.imageUrl, "已复制图片链接")}
-                      downloadUrl={img.imageUrl}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          </section>
-        </main>
-
-        {active ? (
-          <div
-            className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4"
-            role="dialog"
-            aria-modal="true"
-            onClick={() => setActiveId(null)}
-          >
-            <div
-              className="w-full max-w-5xl overflow-hidden rounded-2xl border border-white/10 bg-zinc-950"
-              onClick={(e) => e.stopPropagation()}
+      {/* 模态窗口 */}
+      <AnimatePresence>
+        {activeModal === 'summary' && (
+          <UXOptimizationSummary 
+            userId={currentUserId}
+          />
+        )}
+        
+        {activeModal === 'personalization' && (
+          <PersonalizationCenter
+            userId={currentUserId}
+            onClose={() => setActiveModal(null)}
+          />
+        )}
+        
+        {activeModal === 'payment' && (
+          <SmartPaymentGuidance
+            userId={currentUserId}
+            trigger={currentTrigger}
+            onClose={() => setActiveModal(null)}
+            onUpgrade={(plan) => {
+              console.log('升级到:', plan)
+              setActiveModal(null)
+            }}
+          />
+        )}
+        
+        {activeModal === 'social' && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden"
             >
-              <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-semibold">
-                    {active.styleLabel} · {active.size} · 质量 {active.quality}
-                  </div>
-                  <div className="truncate text-xs text-zinc-400">
-                    {active.model ? `模型：${active.model}` : ""}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <a
-                    href={active.imageUrl}
-                    download={`ai-girl-${active.id}.png`}
-                    className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-zinc-200 hover:bg-white/10"
-                  >
-                    下载
-                  </a>
-                  <button
-                    type="button"
-                    onClick={() => setActiveId(null)}
-                    className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-zinc-200 hover:bg-white/10"
-                  >
-                    关闭
-                  </button>
-                </div>
-              </div>
-
-                <div className="grid gap-4 p-4 lg:grid-cols-5">
-                  <div className="lg:col-span-3">
-                    <ZoomableImage src={active.imageUrl} alt="generated" />
-                  </div>
-                  <div className="lg:col-span-2">
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                    <p className="text-xs font-medium text-zinc-200">提示词</p>
-                    <div className="mt-2 rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
-                      <p className="whitespace-pre-wrap text-sm text-zinc-100">{active.prompt}</p>
-                    </div>
-                    {(active.tagKeys ?? []).length > 0 ? (
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {(active.tagKeys ?? []).map((k) => (
-                          <span
-                            key={k}
-                            className="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-zinc-200"
-                          >
-                            {labelForTagKey(k)}
-                          </span>
-                        ))}
-                      </div>
-                    ) : null}
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => void copyWithToast(active.prompt, "已复制提示词")}
-                        className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10 active:scale-[0.98]"
-                      >
-                        复制提示词
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void copyWithToast(active.imageUrl, "已复制图片链接")}
-                        className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10 active:scale-[0.98]"
-                      >
-                        复制图片链接
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        ) : null}
-
-        {authOpen ? (
-          <div
-            className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4"
-            role="dialog"
-            aria-modal="true"
-            onClick={() => setAuthOpen(false)}
-          >
-            <div
-              className="w-full max-w-md overflow-hidden rounded-2xl border border-white/10 bg-zinc-950"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
-                <div className="text-sm font-semibold">
-                  {authMode === "signin" ? "登录" : "注册"}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setAuthOpen(false)}
-                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-zinc-200 hover:bg-white/10"
+              <div className="flex justify-between items-center p-4 border-b border-gray-200">
+                <h2 className="text-xl font-bold text-gray-900">社交生态系统</h2>
+                <motion.button
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.9 }}
+                  onClick={() => setActiveModal(null)}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
                 >
-                  关闭
-                </button>
+                  ✕
+                </motion.button>
               </div>
-              <div className="p-4">
-                <div className="grid gap-3">
-                  {authMode === "signup" ? (
-                    <input
-                      value={authUsername}
-                      onChange={(e) => setAuthUsername(e.target.value)}
-                      placeholder="用户名（3-20，字母/数字/下划线）"
-                      className="w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-pink-500/50"
-                    />
-                  ) : null}
-
-                  {authMode === "signin" ? (
-                    <input
-                      value={authIdentifier}
-                      onChange={(e) => setAuthIdentifier(e.target.value)}
-                      placeholder="用户名或邮箱"
-                      className="w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-pink-500/50"
-                    />
-                  ) : (
-                    <input
-                      value={authEmail}
-                      onChange={(e) => setAuthEmail(e.target.value)}
-                      placeholder="邮箱"
-                      className="w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-pink-500/50"
-                    />
-                  )}
-                  <input
-                    value={authPassword}
-                    onChange={(e) => setAuthPassword(e.target.value)}
-                    placeholder="密码（>= 6）"
-                    type="password"
-                    className="w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-pink-500/50"
-                  />
-                  {authError ? (
-                    <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-100">
-                      {authError}
-                    </div>
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      setAuthError(null);
-                      const identifier = authIdentifier.trim();
-                      const email = authEmail.trim();
-                      const username = authUsername.trim();
-                      const password = authPassword;
-                      if (authMode === "signin") {
-                        if (!identifier || !password) {
-                          setAuthError("请输入用户名/邮箱和密码。");
-                          return;
-                        }
-                        const err = await signInWithPassword(identifier, password);
-                        if (err) {
-                          setAuthError(err);
-                          return;
-                        }
-                      } else {
-                        if (!username || !email || !password) {
-                          setAuthError("请输入用户名、邮箱和密码。");
-                          return;
-                        }
-                        const err = await signUpWithPassword(username, email, password);
-                        if (err) {
-                          setAuthError(err);
-                          return;
-                        }
-                      }
-                      setAuthOpen(false);
-                      await syncMyImages();
-                    }}
-                    className="rounded-2xl bg-gradient-to-r from-pink-500 via-violet-500 to-sky-500 px-4 py-3 text-sm font-semibold text-white hover:brightness-110"
-                  >
-                    {authMode === "signin" ? "登录" : "注册"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAuthMode((m) => (m === "signin" ? "signup" : "signin"))}
-                    className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-zinc-200 hover:bg-white/10"
-                  >
-                    {authMode === "signin" ? "没有账号？去注册" : "已有账号？去登录"}
-                  </button>
-                </div>
+              <div className="overflow-y-auto max-h-[80vh]">
+                <SocialEcosystem userId={currentUserId} />
               </div>
-            </div>
+            </motion.div>
           </div>
-        ) : null}
-
-        <footer className="text-xs text-zinc-400">
-          提醒：这只是一个生成器前端示例。请确保你拥有提示词与输出的合法使用权，并遵守相关法律与平台政策。
-        </footer>
-      </div>
-    </div>
-  );
+        )}
+        
+        {activeModal === 'support' && (
+          <IntelligentCustomerService
+            isOpen={true}
+            onClose={() => setActiveModal(null)}
+          />
+        )}
+      </AnimatePresence>
+    </>
+  )
 }

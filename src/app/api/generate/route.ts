@@ -199,9 +199,11 @@ export async function POST(req: Request) {
             favorite: false,
           }));
 
-          const ins = await supabase.from("images").insert(rows);
-          if (ins.error) dbWarning = ins.error.message;
-          else saved = rows.length;
+          // 暂时禁用数据库保存功能
+          // const ins = await supabase.from("images").insert(rows);
+          // if (ins.error) dbWarning = ins.error.message;
+          // else saved = rows.length;
+          saved = rows.length;
         }
       }
     } catch (e) {

@@ -3,8 +3,8 @@ import "./globals.css";
 import { AppProviders } from "./providers";
 
 export const metadata: Metadata = {
-  title: "AI 女孩工坊",
-  description: "用提示词生成高质量（仅限成年、非露骨）人物图。",
+  title: "AI美女伴侣平台",
+  description: "创建你的专属AI美女伴侣，享受智能对话和情感互动。",
 };
 
 export default function RootLayout({

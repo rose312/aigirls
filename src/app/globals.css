@@ -1,8 +1,41 @@
 @import "tailwindcss";
 
+/* 设计系统CSS变量 */
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  
+  /* AI美女伴侣平台设计系统 */
+  --color-primary: #FF6B9D;
+  --color-secondary: #FFB3D1;
+  --color-accent: #FF8FA3;
+  --color-background: #FFF8FB;
+  --color-surface: #FFFFFF;
+  --color-text: #2D1B2E;
+  --color-text-secondary: #8B5A6B;
+  --color-border: #F0D0DC;
+  --color-shadow: rgba(255, 107, 157, 0.15);
+  --gradient-primary: linear-gradient(135deg, #FF6B9D 0%, #FFB3D1 100%);
+  
+  --font-family: "Inter", "Noto Sans SC", sans-serif;
+  --font-weight-heading: 600;
+  --font-weight-body: 400;
+  
+  --spacing-xs: 0.25rem;
+  --spacing-sm: 0.5rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 1.5rem;
+  --spacing-xl: 2rem;
+  
+  --border-radius-sm: 0.375rem;
+  --border-radius-md: 0.75rem;
+  --border-radius-lg: 1rem;
+  --border-radius-full: 9999px;
+  
+  --shadow-sm: 0 1px 2px rgba(255, 107, 157, 0.1);
+  --shadow-md: 0 4px 6px rgba(255, 107, 157, 0.15);
+  --shadow-lg: 0 10px 15px rgba(255, 107, 157, 0.2);
+  --shadow-xl: 0 20px 25px rgba(255, 107, 157, 0.25);
 }
 
 @theme inline {
@@ -18,7 +51,33 @@
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+    
+    /* 深色模式主题 */
+    --color-primary: #FF6B9D;
+    --color-secondary: #8B4A6B;
+    --color-accent: #FF8FA3;
+    --color-background: #1A0E14;
+    --color-surface: #2D1B2E;
+    --color-text: #F5E6ED;
+    --color-text-secondary: #C4A4B0;
+    --color-border: #4A2E3A;
+    --color-shadow: rgba(255, 107, 157, 0.25);
+    --gradient-primary: linear-gradient(135deg, #FF6B9D 0%, #8B4A6B 100%);
   }
+}
+
+/* 深色模式类 */
+.dark {
+  --color-primary: #FF6B9D;
+  --color-secondary: #8B4A6B;
+  --color-accent: #FF8FA3;
+  --color-background: #1A0E14;
+  --color-surface: #2D1B2E;
+  --color-text: #F5E6ED;
+  --color-text-secondary: #C4A4B0;
+  --color-border: #4A2E3A;
+  --color-shadow: rgba(255, 107, 157, 0.25);
+  --gradient-primary: linear-gradient(135deg, #FF6B9D 0%, #8B4A6B 100%);
 }
 
 body {
@@ -32,6 +91,212 @@ html {
 
 ::selection {
   background: color-mix(in oklab, var(--foreground) 20%, transparent);
+}
+
+/* 动画关键帧 */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes slideInUp {
+  from { 
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to { 
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideInDown {
+  from { 
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  to { 
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideInLeft {
+  from { 
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  to { 
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideInRight {
+  from { 
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to { 
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes scaleIn {
+  from { 
+    transform: scale(0.8);
+    opacity: 0;
+  }
+  to { 
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes bounce {
+  0%, 100% { transform: scale(1); }
+  25% { transform: scale(1.1); }
+  50% { transform: scale(0.95); }
+  75% { transform: scale(1.05); }
+}
+
+@keyframes pulse {
+  0%, 100% { 
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% { 
+    transform: scale(1.05);
+    opacity: 0.8;
+  }
+}
+
+@keyframes heartbeat {
+  0%, 100% { transform: scale(1); }
+  14% { transform: scale(1.1); }
+  28% { transform: scale(1); }
+  42% { transform: scale(1.1); }
+  70% { transform: scale(1); }
+}
+
+@keyframes wave {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(1.5); }
+}
+
+/* 动画类 */
+.animate-fadeIn {
+  animation: fadeIn 0.6s ease-out forwards;
+}
+
+.animate-fadeOut {
+  animation: fadeOut 0.3s ease-in forwards;
+}
+
+.animate-slideInUp {
+  animation: slideInUp 0.6s ease-out forwards;
+}
+
+.animate-slideInDown {
+  animation: slideInDown 0.6s ease-out forwards;
+}
+
+.animate-slideInLeft {
+  animation: slideInLeft 0.6s ease-out forwards;
+}
+
+.animate-slideInRight {
+  animation: slideInRight 0.6s ease-out forwards;
+}
+
+.animate-scaleIn {
+  animation: scaleIn 0.4s ease-out forwards;
+}
+
+.animate-bounce {
+  animation: bounce 0.6s ease-out;
+}
+
+.animate-pulse {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.animate-heartbeat {
+  animation: heartbeat 1.2s ease-in-out infinite;
+}
+
+.animate-wave {
+  animation: wave 1s ease-in-out infinite;
+}
+
+/* 骨架屏动画 */
+@keyframes skeleton-wave {
+  0% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-skeleton-wave {
+  position: relative;
+  overflow: hidden;
+}
+
+.animate-skeleton-wave::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.2),
+    transparent
+  );
+  animation: skeleton-wave 1.6s linear 0.5s infinite;
+}
+
+/* 主题过渡 */
+* {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+/* 占位符颜色 */
+::placeholder {
+  color: var(--color-text-secondary);
+  opacity: 0.7;
+}
+
+/* 滚动条样式 */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-background);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: var(--border-radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-secondary);
 }
 
 @keyframes ui-toast-in {

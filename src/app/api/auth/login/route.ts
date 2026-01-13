@@ -1,8 +1,5 @@
 import { NextResponse } from "next/server";
-import {
-  getSupabaseAnonServerClient,
-  getSupabaseServiceRoleClient,
-} from "@/lib/supabase-server";
+import { createSupabaseClient } from "@/lib/supabase-types";
 
 export const runtime = "nodejs";
 
@@ -13,10 +10,6 @@ type LoginRequest = {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function normalizeUsername(value: string) {
-  return value.trim().toLowerCase();
 }
 
 function looksLikeEmail(value: string) {
@@ -36,30 +29,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing identifier/password." }, { status: 400 });
     }
 
-    let email = identifier;
-    if (!looksLikeEmail(identifier)) {
-      const username = normalizeUsername(identifier);
-      let admin;
-      try {
-        admin = getSupabaseServiceRoleClient();
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : "Supabase not configured";
-        return NextResponse.json({ error: msg }, { status: 501 });
-      }
-      const { data, error } = await admin
-        .from("profiles")
-        .select("email")
-        .eq("username_lower", username)
-        .maybeSingle();
-      if (error || !data?.email) {
-        return NextResponse.json({ error: "Invalid credentials." }, { status: 401 });
-      }
-      email = String(data.email);
+    // 暂时只支持邮箱登录，简化实现
+    const email = identifier;
+    if (!looksLikeEmail(email)) {
+      return NextResponse.json({ error: "请使用邮箱登录" }, { status: 400 });
     }
 
     // Sign in using the user's access token workflow (password grant) via Supabase auth.
-    // We can use anon key with email/password; the email is resolved server-side when user used username.
-    const supabase = getSupabaseAnonServerClient();
+    const supabase = createSupabaseClient();
     const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
       email,
       password,

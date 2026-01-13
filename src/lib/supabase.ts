@@ -22,3 +22,12 @@ export function getSupabaseBrowserClient(): SupabaseClient | null {
   cached = createClient(url, anonKey);
   return cached;
 }
+
+// 便捷的客户端获取函数
+export function getSupabase() {
+  const client = getSupabaseBrowserClient();
+  if (!client) {
+    throw new Error('Supabase client not available. Check environment variables.');
+  }
+  return client;
+}

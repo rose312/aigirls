@@ -49,18 +49,19 @@ export async function POST(req: Request) {
       .slice(0, 50);
 
     // Only sign keys that belong to the current user.
+    // 支持两种字段名：qiniu_key 和 image_key
     const { data: owned, error: ownedErr } = await supabase
       .from("images")
-      .select("image_key")
-      .in("image_key", keys)
+      .select("qiniu_key, image_key")
+      .or(`qiniu_key.in.(${keys.join(',')}),image_key.in.(${keys.join(',')})`)
       .limit(50);
     if (ownedErr) {
       return NextResponse.json({ error: ownedErr.message }, { status: 500 });
     }
 
     const ownedKeys = (owned ?? [])
-      .map((r: any) => r.image_key)
-      .filter((k: any): k is string => typeof k === "string" && k.length > 0);
+      .flatMap((r: any) => [r.qiniu_key, r.image_key])
+      .filter((k: any): k is string => typeof k === "string" && k.length > 0 && keys.includes(k));
 
     const signed = await Promise.all(
       ownedKeys.map(async (key) => {
